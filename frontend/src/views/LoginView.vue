@@ -56,6 +56,11 @@
             <span v-if="errors.password" class="error-text">{{ errors.password }}</span>
           </div>
 
+          <!-- Forgot Password -->
+          <p class="forgot-link">
+            <a href="#" class="auth-link" @click.prevent="goToForgotPassword">Forgot Password?</a>
+          </p>
+
           <!-- Login Button -->
           <button type="submit" class="btn-primary">Login</button>
 
@@ -124,6 +129,10 @@ const handleSubmit = () => {
 
 const goToSignUp = () => {
   router.push('/signup')
+}
+
+const goToForgotPassword = () => {
+  router.push('/forgot-password')
 }
 </script>
 
@@ -296,6 +305,18 @@ const goToSignUp = () => {
   font-size: 11px;
   color: #e53935;
   margin-top: 4px;
+}
+
+/* ── Forgot Link ── */
+.forgot-link {
+  text-align: right;
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.forgot-link .auth-link {
+  font-size: 12px;
+  font-weight: 500;
 }
 
 /* ── Buttons ── */
