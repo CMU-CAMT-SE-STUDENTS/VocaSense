@@ -37,6 +37,7 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const submitted = ref(false)
@@ -57,11 +58,23 @@ const validate = () => {
   return true
 }
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   if (validate()) {
     console.log('Forgot password submitted:', form.email)
     // TODO: connect to Supabase auth - sendPasswordResetEmail
-    submitted.value = true
+    try{
+      const {data, error} = await supabase.auth.resetPasswordForEmail(form.email, {
+        redirectTo: `${window.location.origin}/reset-password`
+      })
+      if(error) throw error
+
+      console.log('Password reset email sent:', data)
+      submitted.value = true
+    }
+    catch (err) {
+      console.error('Forgot password error:', err)
+      alert('An error occurred while sending the reset email. Please try again.')
+    }
   }
 }
 

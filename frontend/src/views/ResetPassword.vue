@@ -40,6 +40,7 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const showPassword = ref(false)
@@ -60,11 +61,20 @@ const validate = () => {
   return true
 }
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   if (validate()) {
     console.log('Reset password submitted')
     // TODO: connect to Supabase auth - updateUser({ password })
-    router.push('/login')
+    try{
+      const { data, error } = await supabase.auth.updateUser({ password: form.password })
+      if (error) throw error
+
+      console.log('Password updated successfully:', data)
+      router.push('/login')
+    } catch (error) {
+      console.error('Error updating password:', error)
+      alert('An error occurred while updating the password. Please try again.')
+    }
   }
 }
 </script>

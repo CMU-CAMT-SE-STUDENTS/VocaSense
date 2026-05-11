@@ -112,6 +112,7 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const showPassword = ref(false)
@@ -187,10 +188,35 @@ const validate = () => {
   return valid
 }
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   if (validate()) {
     console.log('Form submitted:', form)
-    // TODO: connect to Supabase auth
+    try{
+      // sign up to supabase
+      const { data, error } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: {
+          // another option is to use the `data` field to store additional user metadata
+          data: {
+            first_name: form.firstName,
+            last_name: form.lastName,
+            username: form.username
+          }
+        }
+      })
+      if (error) {
+        console.error('Supabase sign up error:', error)
+        alert('Error signing up: ' + error.message)
+      } else {
+        console.log('Supabase sign up success:', data)
+        alert('Account created successfully!')
+        router.push('/login')
+      }
+    } catch (error) {
+      console.error('Error signing up:', error)
+    }
+
   }
 }
 
