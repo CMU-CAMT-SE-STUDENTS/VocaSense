@@ -88,6 +88,7 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const showPassword = ref(false)
@@ -120,10 +121,43 @@ const validate = () => {
   return valid
 }
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   if (validate()) {
     console.log('Login submitted:', form)
     // TODO: connect to Supabase auth
+    try{
+      let loginEmail = form.identifier
+      if (!loginEmail.includes('@')) {
+        // If it's not an email, assume it's a username and fetch the corresponding email
+        const { data, error: userError } = await supabase
+          .from('account')
+          .select('email')
+          .eq('username', form.identifier)
+          .single()
+
+        if (userError || !data) {
+          errors.identifier = 'User not found'
+          return
+        }
+        loginEmail = data.email
+      }
+      // Now attempt to sign in with the email and password
+      const {data, error} = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: form.password
+      })
+      if (error) {
+        console.error('Login error:', error)
+        errors.password = 'Invalid credentials'
+      } else {
+        console.log('Login successful:', data)
+        router.push('/dashboard')
+      }
+    }
+    catch (err) {
+      console.error('Login error:', err)
+      errors.password = 'An unexpected error occurred. Please try again.'
+    }
   }
 }
 
