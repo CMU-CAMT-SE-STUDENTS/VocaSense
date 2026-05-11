@@ -64,7 +64,7 @@ const handleSubmit = async () => {
     // TODO: connect to Supabase auth - sendPasswordResetEmail
     try{
       const {data, error} = await supabase.auth.resetPasswordForEmail(form.email, {
-        redirectTo: `http://localhost:5173/reset-password`
+        redirectTo: `${window.location.origin}/reset-password`
       })
       if(error) throw error
 

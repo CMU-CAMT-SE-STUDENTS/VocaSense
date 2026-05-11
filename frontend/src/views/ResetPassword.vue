@@ -70,11 +70,11 @@ const handleSubmit = async () => {
       if (error) throw error
 
       console.log('Password updated successfully:', data)
+      router.push('/login')
     } catch (error) {
       console.error('Error updating password:', error)
       alert('An error occurred while updating the password. Please try again.')
     }
-    router.push('/login')
   }
 }
 </script>
