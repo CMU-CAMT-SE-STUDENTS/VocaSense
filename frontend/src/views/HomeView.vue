@@ -340,7 +340,7 @@ const scrollTo = (id) => {
 
 .hero-title {
   font-family: 'Poppins', sans-serif;
-  font-size: 32px;
+  font-size: 2.5rem;
   font-style: normal;
   font-weight: 700;
   line-height: 1.35;
@@ -377,13 +377,13 @@ const scrollTo = (id) => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 20px;
+  padding: 20px 50px;
   background: linear-gradient(102deg, #95B9F7 8.63%, #6594E4 92.33%);
   color: white;
   border: none;
-  border-radius: 30px;
+  border-radius: 50px;
   font-family: 'Poppins', sans-serif;
-  font-size: 14px;
+  font-size: 1.2rem;
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.2s, transform 0.1s;
@@ -542,7 +542,7 @@ const scrollTo = (id) => {
 }
 
 .why-title {
-  font-size: 28px;
+  font-size: 1.75rem;
   font-weight: 700;
   color: #1a1a2e;
   margin-bottom: 8px;
