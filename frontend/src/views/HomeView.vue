@@ -689,7 +689,71 @@ const scrollTo = (id) => {
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .footer {
-    display: none;
+    padding: 24px 20px;
+    border-top: 1px solid rgba(101, 148, 228, 0.12);
+  }
+
+  .footer-content {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    gap: 24px;
+    margin-bottom: 20px;
+  }
+
+  .footer-brand {
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .footer-logo {
+    justify-content: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .footer-logo-img {
+    height: 44px;
+  }
+
+  .footer-desc {
+    margin-bottom: 6px;
+  }
+
+  .footer-tagline {
+    white-space: normal;
+  }
+
+
+  .footer-links {
+    margin-left: 0;
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    gap: 0;
+  }
+
+  /* คอลัมน์ที่ 1 (Product) ให้เนื้อหาชิดซ้าย */
+  .footer-links .footer-col:nth-child(1) {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  /* คอลัมน์ที่ 2 (Company / About) ให้เนื้อหาชิดขวา */
+  .footer-links .footer-col:nth-child(2) {
+    align-items: flex-end; /* ✅ สั่งให้ข้อความ About / Contact แนบชิดกำแพงขอบขวา */
+    text-align: right;     /* ✅ ตัวอักษรจัดชิดขวา */
+  }
+
+  /* ส่วนข้อความลิขสิทธิ์และคำเตือนด้านล่างเส้นคั่น */
+  .footer-bottom {
+    flex-direction: column; /* ปรับเป็นแนวตั้งเพื่อให้แสดงผลเคลียร์และชิดซ้ายสวยงามบนมือถือ */
+    align-items: flex-start;
+    text-align: left;
+    gap: 8px;              /* ลดช่องไฟระหว่างข้อความ */
+    padding-top: 16px;
+    width: 100%;
   }
 
   .nav-links {
