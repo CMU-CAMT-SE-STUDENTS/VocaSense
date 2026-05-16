@@ -2,19 +2,7 @@
   <div class="home-page">
     <!-- Navigation -->
     <div id="top"></div>
-    <nav class="navbar">
-      <div class="nav-content">
-        <div class="nav-logo">
-          <img src="@/assets/icons/logo.png" alt="VocaSense Logo" class="nav-logo-img" />
-        </div>
-        <div class="nav-links">
-          <a href="#" class="nav-link active" @click.prevent="scrollTo('top')">Home</a>
-          <a href="#how-it-works" class="nav-link" @click.prevent="scrollTo('how-it-works')">How it Works</a>
-          <a href="#" class="nav-link" @click.prevent="goToSignUp">Sign up</a>
-        </div>
-        <button class="btn-login" @click="goToLogin">Login</button>
-      </div>
-    </nav>
+    <Navbar @scroll-to="scrollTo" />
 
     <!-- Hero Section -->
     <section class="hero-section">
@@ -201,12 +189,8 @@
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
+import Navbar from '@/components/NavBar.vue'
 
-const router = useRouter()
-
-const goToLogin = () => router.push('/login')
-const goToSignUp = () => router.push('/signup')
 
 const scrollTo = (id) => {
   const el = document.getElementById(id)
@@ -232,67 +216,6 @@ const scrollTo = (id) => {
 
 .br-mobile {
   display: none;
-}
-
-/* ── Navbar ── */
-.navbar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid rgba(101, 148, 228, 0.12);
-  padding: 0 40px;
-}
-
-.nav-content {
-  max-width: 1100px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  height: 64px;
-  gap: 32px;
-}
-
-.nav-logo {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.nav-logo-img {
-  height: 38px;
-  width: auto;
-  object-fit: contain;
-}
-
-.nav-brand {
-  font-size: 18px;
-  font-weight: 700;
-  background: linear-gradient(102deg, #95B9F7 8.63%, #6594E4 92.33%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  margin-left: auto;
-}
-
-.nav-link {
-  font-size: 14px;
-  font-weight: 500;
-  color: #555;
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.nav-link:hover,
-.nav-link.active {
-  color: #6594E4;
 }
 
 .btn-login {
