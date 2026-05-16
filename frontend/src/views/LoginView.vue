@@ -151,7 +151,7 @@ const handleSubmit = async () => {
         errors.password = 'Invalid credentials'
       } else {
         console.log('Login successful:', data)
-        router.push('/dashboard')
+        router.push('/')
       }
     }
     catch (err) {

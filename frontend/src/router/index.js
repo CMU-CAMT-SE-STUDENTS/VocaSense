@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import HomeView from '../views/HomeView.vue'
 import SignUpView from '../views/SignUp.vue'
 import LoginView from '../views/LoginView.vue'
 import ForgotPassword from '../views/ForgotPassword.vue'
@@ -9,7 +10,8 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/signup'
+      name: 'home',
+      component: HomeView
     },
     {
       path: '/signup',
