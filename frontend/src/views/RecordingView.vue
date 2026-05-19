@@ -195,7 +195,7 @@
             We detected too much background noise. Please move to a quieter place for accurate voice analysis.
           </p>
           <button class="modal-btn" @click="retryAfterNoise">Try Again</button>
-          <button class="modal-dismiss" @click="dismissNoiseAlert">Dismiss</button>
+          <button class="modal-dismiss" @click="goBack">Cancel</button>
         </div>
       </div>
     </Transition>
@@ -219,14 +219,15 @@ const AUDIO_CONSTRAINTS = {
     sampleRate: { ideal: 44100 },
   },
 }
-const NOISE_LOUD_THRESHOLD = 20
+const NOISE_LOUD_THRESHOLD = 25
 
 const ERROR_MESSAGES = {
-  denied:      'Microphone access was denied. Please allow microphone access in your browser settings and try again.',
-  not_found:   'No microphone was detected. Please connect a microphone and try again.',
-  not_readable:'Your microphone is in use by another application. Please close it and try again.',
-  security:    'Microphone access requires a secure connection (HTTPS).',
-  other:       'Could not access the microphone. Please check your device and try again.',
+  denied:          'Microphone access is required. Please allow microphone access in your browser settings and try again.',
+  not_found:       'No microphone was detected. Please connect a microphone and try again.',
+  not_readable:    'Your microphone is in use by another application. Please close it and try again.',
+  security:        'Microphone access requires a secure connection (HTTPS).',
+  recording_error: 'A system error occurred during recording. Please try again.',
+  other:           'Could not access the microphone. Please check your device and try again.',
 }
 
 // ── Waveform bars (static decorative)
@@ -251,10 +252,11 @@ let countdownInterval  = null
 let mediaRecorder      = null
 let audioStream        = null
 
-// ── Audio capture 
-let audioChunks             = []
-let recordingWasCancelled   = false
-const recordedAudioUrl      = ref(null)
+// ── Audio capture
+let audioChunks           = []
+let recordingWasCancelled = false
+let recordingHadError     = false
+const recordedAudioUrl    = ref(null)
 
 // ── Recorded audio playback 
 const isPlayingRecording    = ref(false)
@@ -442,17 +444,31 @@ const handleRecordButton = async () => {
 }
 
 const startRecording = () => {
-  audioChunks            = []
-  recordingWasCancelled  = false
-  voiceDetected.value = false
-  voiceFrameCount     = 0
+  audioChunks           = []
+  recordingWasCancelled = false
+  recordingHadError     = false
+  voiceDetected.value   = false
+  voiceFrameCount       = 0
   mediaRecorder         = new MediaRecorder(audioStream)
 
   mediaRecorder.ondataavailable = (e) => {
     if (e.data.size > 0) audioChunks.push(e.data)
   }
 
+  mediaRecorder.onerror = () => {
+    recordingHadError     = true
+    recordingWasCancelled = true
+    clearInterval(countdownInterval)
+    stopLiveWaveform()
+    audioStream?.getTracks().forEach((t) => t.stop())
+    audioStream = null
+    audioChunks = []
+    recordingStatus.value = 'not_ready'
+    errorType.value       = 'recording_error'
+  }
+
   mediaRecorder.onstop = () => {
+    if (recordingHadError) return
     if (!recordingWasCancelled && audioChunks.length > 0) {
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
       if (recordedAudioUrl.value) URL.revokeObjectURL(recordedAudioUrl.value)
