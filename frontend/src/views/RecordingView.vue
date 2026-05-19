@@ -383,13 +383,9 @@ const startLiveWaveform = (stream) => {
       if (h > frameMax) frameMax = h
       return h
     })
-    if (!voiceDetected.value) {
-      if (frameMax > 60) {
-        voiceFrameCount++
-        if (voiceFrameCount >= 15) voiceDetected.value = true
-      } else {
-        voiceFrameCount = Math.max(0, voiceFrameCount - 2)
-      }
+    if (!voiceDetected.value && frameMax > 50) {
+      voiceFrameCount++
+      if (voiceFrameCount >= 15) voiceDetected.value = true
     }
   }
   draw()
