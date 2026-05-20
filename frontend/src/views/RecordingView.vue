@@ -38,6 +38,30 @@
         </div>
       </template>
 
+      <!-- WAITING FOR VOICE -->
+      <template v-else-if="recordingStatus === 'waiting_voice'">
+        <div class="main-card">
+          <div class="status-badge-waiting">
+            <span class="dot-waiting"></span>
+            Listening...
+          </div>
+          <p class="waiting-title">Start speaking to begin recording</p>
+          <p class="waiting-hint">Say <strong>"Ahhhh"</strong> loudly — the timer will start automatically</p>
+          <div class="live-waveform-wrap">
+            <div
+              v-for="(h, i) in liveWaveformBars"
+              :key="i"
+              class="live-bar"
+              :style="{ height: Math.round(h) + 'px' }"
+            ></div>
+          </div>
+          <button class="btn-cancel" @click="cancelWaiting">
+            <img src="@/assets/icons/cancel.png" alt="" class="btn-cancel-img" />
+            Cancel
+          </button>
+        </div>
+      </template>
+
       <!-- RECORDING COMPLETE -->
       <template v-else-if="recordingStatus === 'completed'">
 
@@ -147,6 +171,15 @@
           </div>
         </div>
 
+        <!-- Noise-during-recording card -->
+        <div v-if="noiseDuringRec" class="noise-rec-card">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" class="error-icon" style="flex-shrink:0">
+            <circle cx="9" cy="9" r="8.5" stroke="#ff9f0a" />
+            <path d="M9 5v4M9 12v.5" stroke="#ff9f0a" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+          <p class="noise-rec-text">Recording was stopped because the background noise was too high. Please move to a quieter place and try again.</p>
+        </div>
+
         <!-- Error card -->
         <div v-if="errorType" class="error-card">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" class="error-icon">
@@ -200,6 +233,29 @@
       </div>
     </Transition>
 
+    <!-- Noise during recording modal -->
+    <Transition name="modal-fade">
+      <div v-if="showNoiseDuringRecAlert" class="modal-overlay">
+        <div class="modal-card" @click.stop>
+          <div class="modal-icon-wrap">
+            <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+              <circle cx="18" cy="18" r="18" fill="rgba(255,159,10,0.12)" />
+              <path d="M12 18c0-3.314 2.686-6 6-6v0c3.314 0 6 2.686 6 6v0" stroke="#ff9f0a" stroke-width="2" stroke-linecap="round"/>
+              <path d="M9 18c0-4.97 4.03-9 9-9v0c4.97 0 9 4.03 9 9v0" stroke="#ff9f0a" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+              <circle cx="18" cy="22" r="2" fill="#ff9f0a"/>
+              <path d="M18 18v-2" stroke="#ff9f0a" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <h3 class="modal-title">Background Noise Detected</h3>
+          <p class="modal-desc">
+            Too much background noise was detected during recording. Please move to a quieter place and try again.
+          </p>
+          <button class="modal-btn" @click="retryAfterNoiseDuringRec">Record Again</button>
+          <button class="modal-dismiss" @click="cancelNoiseDuringRec">Cancel</button>
+        </div>
+      </div>
+    </Transition>
+
   </div>
 </template>
 
@@ -219,7 +275,7 @@ const AUDIO_CONSTRAINTS = {
     sampleRate: { ideal: 44100 },
   },
 }
-const NOISE_LOUD_THRESHOLD = 25
+const NOISE_LOUD_THRESHOLD = 20
 
 const ERROR_MESSAGES = {
   denied:          'Microphone access is required. Please allow microphone access in your browser settings and try again.',
@@ -270,10 +326,14 @@ let liveAudioCtx       = null
 let liveAnalyser       = null
 let liveAnimFrame      = null
 let liveSourceNode     = null
+let noiseCheckAnalyser = null
 
 // ── Voice detection
-const voiceDetected = ref(false)
-let voiceFrameCount = 0
+const voiceDetected           = ref(false)
+const noiseDuringRec          = ref(false)
+const showNoiseDuringRecAlert = ref(false)
+let voiceFrameCount           = 0
+let noiseDuringRecordingDetected = false
 
 // ── Computed 
 const statusText = computed(
@@ -282,6 +342,7 @@ const statusText = computed(
     requesting:     'Requesting Access',
     checking_noise: 'Checking Environment',
     ready:          'Ready to Record',
+    waiting_voice:  'Listening for Voice',
   })[recordingStatus.value] ?? 'Not Ready to Record',
 )
 
@@ -340,27 +401,101 @@ const toggleSample = () => {
   }, 80)
 }
 
-// ── Noise measurement 
+// ── Noise measurement
+const percentile = (values, ratio) => {
+  if (!values.length) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const index = Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * ratio))
+  return sorted[index]
+}
+
 const measureBackgroundNoise = (stream) =>
   new Promise((resolve) => {
     const AudioCtx = window.AudioContext || window['webkitAudioContext']
     const ctx      = new AudioCtx()
     const source   = ctx.createMediaStreamSource(stream)
     const analyser = ctx.createAnalyser()
-    analyser.fftSize = 256
+    analyser.fftSize = 2048
     source.connect(analyser)
-    const data    = new Uint8Array(analyser.frequencyBinCount)
-    const samples = []
-    const iv = setInterval(() => {
-      analyser.getByteFrequencyData(data)
-      samples.push(data.reduce((a, b) => a + b, 0) / data.length)
-      if (samples.length >= 15) {
-        clearInterval(iv)
-        source.disconnect()
-        ctx.close()
-        resolve(samples.reduce((a, b) => a + b, 0) / samples.length)
+
+    const data     = new Uint8Array(analyser.fftSize)
+    const freqData = new Uint8Array(analyser.frequencyBinCount)
+    const rms             = []
+    const peaks           = []
+    const zcrs            = []
+    const speechBinCounts = []
+    const started  = performance.now()
+    const duration = 2000
+
+    const finish = () => {
+      const avgRms = rms.reduce((sum, value) => sum + value, 0) / Math.max(rms.length, 1)
+      const p90Rms = percentile(rms, 0.9)
+      const maxPeak = Math.max(...peaks, 0)
+      const spikeFrames = peaks.filter((peak, index) => peak >= 20 || rms[index] >= NOISE_LOUD_THRESHOLD).length
+      const spikeScore = (spikeFrames / Math.max(peaks.length, 1)) * 100
+      const rmsStd = Math.sqrt(rms.reduce((sum, v) => sum + (v - avgRms) ** 2, 0) / Math.max(rms.length, 1))
+      const avgZcr = zcrs.reduce((sum, v) => sum + v, 0) / Math.max(zcrs.length, 1)
+      const zcrScore = avgZcr * 0.7
+
+      // speech spreads energy across many freq bins (100Hz–3kHz); AC/fan only uses a few harmonics
+      const avgActiveBins = speechBinCounts.reduce((sum, v) => sum + v, 0) / Math.max(speechBinCounts.length, 1)
+      const spectralScore = avgActiveBins * 0.5
+
+      const score = Math.max(avgRms, p90Rms, maxPeak * 0.85, spikeScore, rmsStd * 4, zcrScore, spectralScore)
+
+      console.log('[noise-check]', {
+        avgRms:       avgRms.toFixed(2),
+        p90Rms:       p90Rms.toFixed(2),
+        maxPeak:      maxPeak.toFixed(0),
+        spikeScore:   spikeScore.toFixed(1),
+        rmsStd:       rmsStd.toFixed(2),
+        zcrScore:     zcrScore.toFixed(1),
+        avgActiveBins:avgActiveBins.toFixed(1),
+        spectralScore:spectralScore.toFixed(1),
+        FINAL:        score.toFixed(2),
+        threshold:    NOISE_LOUD_THRESHOLD,
+        PASS:         score < NOISE_LOUD_THRESHOLD,
+      })
+
+      source.disconnect()
+      ctx.close()
+      resolve(score)
+    }
+
+    const capture = () => {
+      analyser.getByteTimeDomainData(data)
+      analyser.getByteFrequencyData(freqData)
+
+      let sumSquares = 0
+      let peak = 0
+      let zcr = 0
+      for (let i = 0; i < data.length; i++) {
+        const centered = data[i] - 128
+        sumSquares += centered * centered
+        peak = Math.max(peak, Math.abs(centered))
+        if (i > 0 && centered * (data[i - 1] - 128) < 0) zcr++
       }
-    }, 100)
+
+      // bins 5–139 ≈ 100Hz–3kHz at 44100Hz SR; threshold 25 ≈ –91dB (above noise floor)
+      let activeBins = 0
+      for (let i = 5; i <= 139; i++) {
+        if (freqData[i] > 25) activeBins++
+      }
+
+      rms.push(Math.sqrt(sumSquares / data.length))
+      peaks.push(peak)
+      zcrs.push(zcr)
+      speechBinCounts.push(activeBins)
+
+      if (performance.now() - started >= duration) {
+        finish()
+        return
+      }
+
+      requestAnimationFrame(capture)
+    }
+
+    capture()
   })
 
 // ── Live waveform
@@ -369,10 +504,18 @@ const startLiveWaveform = (stream) => {
   liveAudioCtx   = new AudioCtx()
   liveAudioCtx.resume()
   liveSourceNode = liveAudioCtx.createMediaStreamSource(stream)
-  liveAnalyser   = liveAudioCtx.createAnalyser()
-  liveAnalyser.fftSize = 128
+
+  liveAnalyser          = liveAudioCtx.createAnalyser()
+  liveAnalyser.fftSize  = 128
   liveSourceNode.connect(liveAnalyser)
   const data = new Uint8Array(liveAnalyser.fftSize)
+
+  noiseCheckAnalyser          = liveAudioCtx.createAnalyser()
+  noiseCheckAnalyser.fftSize  = 2048
+  liveSourceNode.connect(noiseCheckAnalyser)
+  const noiseData = new Uint8Array(noiseCheckAnalyser.fftSize)
+  // consecutive frames where peak exceeds the sudden-loud threshold
+  let loudFrames = 0
 
   const draw = () => {
     liveAnimFrame = requestAnimationFrame(draw)
@@ -385,18 +528,38 @@ const startLiveWaveform = (stream) => {
       if (h > frameMax) frameMax = h
       return h
     })
-    if (!voiceDetected.value && frameMax > 50) {
+
+    if (recordingStatus.value === 'waiting_voice' && frameMax > 80) {
       voiceFrameCount++
-      if (voiceFrameCount >= 15) voiceDetected.value = true
+      if (voiceFrameCount >= 25) beginRecording()
+    }
+
+    if (recordingStatus.value === 'recording') {
+      noiseCheckAnalyser.getByteTimeDomainData(noiseData)
+      let peak = 0
+      for (let i = 0; i < noiseData.length; i++) {
+        peak = Math.max(peak, Math.abs(noiseData[i] - 128))
+      }
+      // only flag very loud sudden events (door slam, shout, loud bang)
+      // normal "Ah" at moderate-to-loud volume peaks around 60–90; threshold 110 avoids false positives
+      if (peak >= 110) {
+        loudFrames++
+        if (loudFrames >= 5) handleNoiseDuringRec()
+      } else {
+        loudFrames = 0
+      }
+    } else {
+      loudFrames = 0
     }
   }
   draw()
 }
 
 const stopLiveWaveform = () => {
-  if (liveAnimFrame)  { cancelAnimationFrame(liveAnimFrame); liveAnimFrame = null }
-  if (liveSourceNode) { liveSourceNode.disconnect(); liveSourceNode = null }
-  if (liveAudioCtx)   { liveAudioCtx.close(); liveAudioCtx = null }
+  if (liveAnimFrame)       { cancelAnimationFrame(liveAnimFrame); liveAnimFrame = null }
+  if (noiseCheckAnalyser)  { noiseCheckAnalyser.disconnect(); noiseCheckAnalyser = null }
+  if (liveSourceNode)      { liveSourceNode.disconnect(); liveSourceNode = null }
+  if (liveAudioCtx)        { liveAudioCtx.close(); liveAudioCtx = null }
   liveAnalyser = null
   liveWaveformBars.value = Array(32).fill(8)
 }
@@ -440,15 +603,26 @@ const requestMicAndCheck = async () => {
 const handleRecordButton = async () => {
   if (isBtnDisabled.value) return
   if (errorType.value) { errorType.value = null; await requestMicAndCheck(); return }
-  if (recordingStatus.value === 'ready') startRecording()
+  if (recordingStatus.value === 'ready') enterWaitingVoice()
 }
 
-const startRecording = () => {
-  audioChunks           = []
-  recordingWasCancelled = false
-  recordingHadError     = false
+const enterWaitingVoice = () => {
   voiceDetected.value   = false
+  noiseDuringRec.value  = false
   voiceFrameCount       = 0
+  recordingStatus.value = 'waiting_voice'
+  startLiveWaveform(audioStream)
+}
+
+const beginRecording = () => {
+  if (recordingStatus.value !== 'waiting_voice') return
+  recordingStatus.value        = 'recording'
+  voiceDetected.value          = true
+  voiceFrameCount              = 0
+  audioChunks                  = []
+  recordingWasCancelled        = false
+  recordingHadError            = false
+  noiseDuringRecordingDetected = false
   mediaRecorder         = new MediaRecorder(audioStream)
 
   mediaRecorder.ondataavailable = (e) => {
@@ -469,6 +643,7 @@ const startRecording = () => {
 
   mediaRecorder.onstop = () => {
     if (recordingHadError) return
+    if (noiseDuringRecordingDetected) { audioChunks = []; return }
     if (!recordingWasCancelled && audioChunks.length > 0) {
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
       if (recordedAudioUrl.value) URL.revokeObjectURL(recordedAudioUrl.value)
@@ -476,7 +651,6 @@ const startRecording = () => {
       audioChunks = []
       recordingStatus.value = 'completed'
     } else {
-      // Cancelled — discard audio, go back to ready
       audioChunks = []
       audioStream?.getTracks().forEach((t) => t.stop())
       audioStream = null
@@ -485,8 +659,6 @@ const startRecording = () => {
   }
 
   mediaRecorder.start()
-  startLiveWaveform(audioStream)
-  recordingStatus.value = 'recording'
   countdown.value = 5
   countdownInterval = setInterval(() => {
     countdown.value--
@@ -507,7 +679,13 @@ const cancelRecording = () => {
   clearInterval(countdownInterval)
   stopLiveWaveform()
   if (mediaRecorder?.state !== 'inactive') mediaRecorder?.stop()
-  // onstop handler will discard audio and re-request mic
+}
+
+const cancelWaiting = () => {
+  stopLiveWaveform()
+  audioStream?.getTracks().forEach((t) => t.stop())
+  audioStream = null
+  requestMicAndCheck()
 }
 
 // ── Recorded audio playback
@@ -552,12 +730,28 @@ const recordAgain = () => {
 }
 
 const analyzeVoice = () => {
-  router.push('/analysis')
+  // TODO: navigate to analysis page when ready
 }
 
-// ── Noise modal 
-const retryAfterNoise   = async () => { showNoiseAlert.value = false; await requestMicAndCheck() }
-const dismissNoiseAlert = ()        => { showNoiseAlert.value = false }
+// ── Noise during recording
+const handleNoiseDuringRec = () => {
+  if (recordingStatus.value !== 'recording') return
+  noiseDuringRecordingDetected = true
+  recordingWasCancelled        = true
+  clearInterval(countdownInterval)
+  stopLiveWaveform()
+  audioStream?.getTracks().forEach((t) => t.stop())
+  audioStream = null
+  if (mediaRecorder?.state !== 'inactive') mediaRecorder?.stop()
+  recordingStatus.value         = 'not_ready'
+  showNoiseDuringRecAlert.value = true
+}
+
+// ── Noise modal
+const retryAfterNoise          = async () => { showNoiseAlert.value = false; await requestMicAndCheck() }
+const dismissNoiseAlert        = ()        => { showNoiseAlert.value = false }
+const retryAfterNoiseDuringRec = async () => { showNoiseDuringRecAlert.value = false; await requestMicAndCheck() }
+const cancelNoiseDuringRec     = ()        => { showNoiseDuringRecAlert.value = false; requestMicAndCheck() }
 
 // ── Lifecycle 
 onMounted(() => requestMicAndCheck())
@@ -763,6 +957,14 @@ onUnmounted(() => {
 }
 .instr-text { font-size: 13px; font-weight: 500; color: #555; }
 
+/* ── Noise-during-recording card ── */
+.noise-rec-card {
+  width: 100%; display: flex; align-items: flex-start; gap: 10px;
+  background: #fffbf0; border: 1px solid rgba(255, 159, 10, 0.35);
+  border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;
+}
+.noise-rec-text { font-size: 13px; font-weight: 500; color: #b87000; line-height: 1.55; }
+
 /* ── Error card ── */
 .error-card {
   width: 100%; display: flex; align-items: flex-start; gap: 10px;
@@ -809,6 +1011,27 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+/* WAITING FOR VOICE VIEW */
+.status-badge-waiting {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 18px; border-radius: 20px;
+  border: 1.5px solid rgba(101, 148, 228, 0.45);
+  background: white; font-size: 13px; font-weight: 600; color: #6594e4;
+  white-space: nowrap; margin-bottom: 20px;
+}
+.dot-waiting {
+  width: 8px; height: 8px; border-radius: 50%; background: #6594e4; flex-shrink: 0;
+  animation: blink 0.9s ease-in-out infinite;
+}
+.waiting-title {
+  font-size: 20px; font-weight: 700; color: #1a1a2e;
+  text-align: center; margin-bottom: 10px;
+}
+.waiting-hint {
+  font-size: 14px; font-weight: 400; color: #666;
+  text-align: center; margin-bottom: 28px; line-height: 1.6;
 }
 
 /* RECORDING IN PROGRESS VIEW*/
