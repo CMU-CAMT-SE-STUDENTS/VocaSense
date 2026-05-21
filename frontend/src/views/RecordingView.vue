@@ -62,6 +62,25 @@
         </div>
       </template>
 
+      <!-- VALIDATING RECORDING -->
+      <template v-else-if="recordingStatus === 'validating_recording'">
+        <div class="main-card">
+          <div class="status-badge-validating">
+            <span class="dot-validating"></span>
+            Checking Voice Sample
+          </div>
+
+          <div class="validation-loader" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+
+          <h1 class="validating-title">Checking your recording</h1>
+          <p class="validating-subtitle">Please wait while we verify that this is a continuous "Ahhhh" sample.</p>
+        </div>
+      </template>
+
       <!-- RECORDING COMPLETE -->
       <template v-else-if="recordingStatus === 'completed'">
 
@@ -275,6 +294,7 @@ const AUDIO_CONSTRAINTS = {
     sampleRate: { ideal: 44100 },
   },
 }
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 const NOISE_LOUD_THRESHOLD = 20
 
 const ERROR_MESSAGES = {
@@ -298,8 +318,8 @@ const playProgress     = ref(0)
 let sampleAudio        = null
 let sampleInterval     = null
 
-// ── Recording state machine 
-// not_ready → requesting → checking_noise → ready → recording → completed
+// ── Recording state machine
+// not_ready → requesting → checking_noise → ready → waiting_voice → recording → validating_recording → completed
 const recordingStatus  = ref('not_ready')
 const errorType        = ref(null)
 const showNoiseAlert   = ref(false)
@@ -313,8 +333,11 @@ let audioChunks           = []
 let recordingWasCancelled = false
 let recordingHadError     = false
 const recordedAudioUrl    = ref(null)
+const recordedAudioBlob   = ref(null)
+const recordedWavBlob     = ref(null)
+const lastVoiceValidation = ref(null)
 
-// ── Recorded audio playback 
+// ── Recorded audio playback
 const isPlayingRecording    = ref(false)
 const recordingPlayProgress = ref(0)
 let playbackAudio           = null
@@ -335,7 +358,7 @@ const showNoiseDuringRecAlert = ref(false)
 let voiceFrameCount           = 0
 let noiseDuringRecordingDetected = false
 
-// ── Computed 
+// ── Computed
 const statusText = computed(
   () => ({
     not_ready:      'Not Ready to Record',
@@ -343,6 +366,7 @@ const statusText = computed(
     checking_noise: 'Checking Environment',
     ready:          'Ready to Record',
     waiting_voice:  'Listening for Voice',
+    validating_recording: 'Checking Voice Sample',
   })[recordingStatus.value] ?? 'Not Ready to Record',
 )
 
@@ -352,12 +376,13 @@ const statusClass = computed(
     requesting:     'status-checking',
     checking_noise: 'status-checking',
     ready:          'status-ready',
+    validating_recording: 'status-checking',
   })[recordingStatus.value] ?? 'status-not-ready',
 )
 
 const isBtnDisabled = computed(
   () =>
-    ['requesting', 'checking_noise'].includes(recordingStatus.value) ||
+    ['requesting', 'checking_noise', 'validating_recording'].includes(recordingStatus.value) ||
     (recordingStatus.value === 'not_ready' && !errorType.value),
 )
 
@@ -373,10 +398,10 @@ const btnLabel = computed(() => {
 
 const errorMessage = computed(() => ERROR_MESSAGES[errorType.value] ?? '')
 
-// ── Navigation 
+// ── Navigation
 const goBack = () => router.push('/')
 
-// ── Sample audio 
+// ── Sample audio
 const toggleSample = () => {
   if (isPlayingSample.value) return
 
@@ -564,7 +589,7 @@ const stopLiveWaveform = () => {
   liveWaveformBars.value = Array(32).fill(8)
 }
 
-// ── Mic + noise check 
+// ── Mic + noise check
 const requestMicAndCheck = async () => {
   if (!navigator.mediaDevices?.getUserMedia) {
     errorType.value = 'security'
@@ -599,7 +624,7 @@ const requestMicAndCheck = async () => {
   }
 }
 
-// ── Recording 
+// ── Recording
 const handleRecordButton = async () => {
   if (isBtnDisabled.value) return
   if (errorType.value) { errorType.value = null; await requestMicAndCheck(); return }
@@ -641,14 +666,18 @@ const beginRecording = () => {
     errorType.value       = 'recording_error'
   }
 
-  mediaRecorder.onstop = () => {
+  mediaRecorder.onstop = async () => {
     if (recordingHadError) return
     if (noiseDuringRecordingDetected) { audioChunks = []; return }
     if (!recordingWasCancelled && audioChunks.length > 0) {
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
       if (recordedAudioUrl.value) URL.revokeObjectURL(recordedAudioUrl.value)
       recordedAudioUrl.value = URL.createObjectURL(blob)
+      recordedAudioBlob.value = blob
+      recordedWavBlob.value = null
       audioChunks = []
+      recordingStatus.value = 'validating_recording'
+      voiceDetected.value = await validateRecordedVoiceSample()
       recordingStatus.value = 'completed'
     } else {
       audioChunks = []
@@ -724,13 +753,109 @@ const recordAgain = () => {
   isPlayingRecording.value = false
   recordingPlayProgress.value = 0
   if (recordedAudioUrl.value) { URL.revokeObjectURL(recordedAudioUrl.value); recordedAudioUrl.value = null }
+  recordedAudioBlob.value = null
+  recordedWavBlob.value = null
+  lastVoiceValidation.value = null
   audioChunks = []
   voiceDetected.value = false
   requestMicAndCheck()
 }
 
+// ── Audio validation
+
+// Convert Float32Array audio data to 16-bit PCM and write to DataView
+const floatTo16BitPcm = (view, offset, input) => {
+  for (let i = 0; i < input.length; i++, offset += 2) {
+    const sample = Math.max(-1, Math.min(1, input[i]))
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
+  }
+}
+
+// Write ASCII string to DataView at specified offset
+const writeString = (view, offset, value) => {
+  for (let i = 0; i < value.length; i++) {
+    view.setUint8(offset + i, value.charCodeAt(i))
+  }
+}
+
+// Convert AudioBuffer to WAV Blob (mono mixdown, 16-bit PCM)
+const audioBufferToWavBlob = (audioBuffer) => {
+  const channelCount = audioBuffer.numberOfChannels
+  const sampleRate = audioBuffer.sampleRate
+  const length = audioBuffer.length
+  const mono = new Float32Array(length)
+
+  for (let channel = 0; channel < channelCount; channel++) {
+    const data = audioBuffer.getChannelData(channel)
+    for (let i = 0; i < length; i++) mono[i] += data[i] / channelCount
+  }
+
+  const buffer = new ArrayBuffer(44 + mono.length * 2)
+  const view = new DataView(buffer)
+  writeString(view, 0, 'RIFF')
+  view.setUint32(4, 36 + mono.length * 2, true)
+  writeString(view, 8, 'WAVE')
+  writeString(view, 12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeString(view, 36, 'data')
+  view.setUint32(40, mono.length * 2, true)
+  floatTo16BitPcm(view, 44, mono)
+
+  return new Blob([view], { type: 'audio/wav' })
+}
+
+const getRecordedWavBlob = async () => {
+  if (recordedWavBlob.value) return recordedWavBlob.value
+  if (!recordedAudioBlob.value) throw new Error('No recording is available.')
+
+  const AudioCtx = window.AudioContext || window['webkitAudioContext']
+  const ctx = new AudioCtx()
+  const audioBuffer = await ctx.decodeAudioData(await recordedAudioBlob.value.arrayBuffer())
+  const wavBlob = audioBufferToWavBlob(audioBuffer)
+  await ctx.close()
+  recordedWavBlob.value = wavBlob
+  return wavBlob
+}
+
+// Send recorded WAV blob to backend for validation
+const validateRecordedVoiceSample = async () => {
+  try {
+    const wavBlob = await getRecordedWavBlob()
+    const formData = new FormData()
+    formData.append('file', wavBlob, 'voice-sample.wav')
+
+    const response = await fetch(`${API_BASE_URL}/api/voice/validate`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    const result = await response.json().catch(() => null)
+    if (!response.ok) {
+      throw new Error(result?.detail || 'Voice validation API failed.')
+    }
+
+    lastVoiceValidation.value = result
+    console.log('[voice-validation]', result)
+    return Boolean(result.accepted)
+  } catch (err) {
+    lastVoiceValidation.value = { accepted: false, error: err?.message || 'Could not validate voice sample.' }
+    console.log('[voice-validation-error]', lastVoiceValidation.value)
+    return false
+  }
+}
+
 const analyzeVoice = () => {
-  // TODO: navigate to analysis page when ready
+  console.log('[analyze-voice]', {
+    sampleAccepted: voiceDetected.value,
+    validation: lastVoiceValidation.value,
+  })
+  // TODO: navigate to analysis page when the voice-health analysis view is ready.
 }
 
 // ── Noise during recording
@@ -753,7 +878,7 @@ const dismissNoiseAlert        = ()        => { showNoiseAlert.value = false }
 const retryAfterNoiseDuringRec = async () => { showNoiseDuringRecAlert.value = false; await requestMicAndCheck() }
 const cancelNoiseDuringRec     = ()        => { showNoiseDuringRecAlert.value = false; requestMicAndCheck() }
 
-// ── Lifecycle 
+// ── Lifecycle
 onMounted(() => requestMicAndCheck())
 
 onUnmounted(() => {
@@ -1032,6 +1157,52 @@ onUnmounted(() => {
 .waiting-hint {
   font-size: 14px; font-weight: 400; color: #666;
   text-align: center; margin-bottom: 28px; line-height: 1.6;
+}
+
+/* VALIDATING RECORDING VIEW */
+.status-badge-validating {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 18px; border-radius: 20px;
+  border: 1.5px solid rgba(101, 148, 228, 0.45);
+  background: white; font-size: 13px; font-weight: 600; color: #6594e4;
+  white-space: nowrap; margin-bottom: 28px;
+}
+.dot-validating {
+  width: 8px; height: 8px; border-radius: 50%; background: #6594e4; flex-shrink: 0;
+  animation: blink 0.9s ease-in-out infinite;
+}
+.validation-loader {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: #eef2ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 24px;
+  box-shadow: inset 0 0 0 1px rgba(101, 148, 228, 0.18);
+}
+.validation-loader span {
+  width: 8px;
+  height: 34px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #95B9F7, #6594E4);
+  animation: validation-pulse 0.9s ease-in-out infinite;
+}
+.validation-loader span:nth-child(2) { animation-delay: 0.12s; }
+.validation-loader span:nth-child(3) { animation-delay: 0.24s; }
+@keyframes validation-pulse {
+  0%, 100% { transform: scaleY(0.45); opacity: 0.55; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+.validating-title {
+  font-size: 28px; font-weight: 800; color: #1a1a2e;
+  text-align: center; margin-bottom: 10px;
+}
+.validating-subtitle {
+  font-size: 14px; font-weight: 500; color: #666;
+  text-align: center; line-height: 1.6; max-width: 390px;
 }
 
 /* RECORDING IN PROGRESS VIEW*/
