@@ -189,6 +189,7 @@
 </template>
 
 <script setup>
+import { useRouter } from 'vue-router'
 import Navbar from '@/components/NavBar.vue'
 
 
