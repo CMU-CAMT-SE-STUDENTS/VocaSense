@@ -2,19 +2,7 @@
   <div class="home-page">
     <!-- Navigation -->
     <div id="top"></div>
-    <nav class="navbar">
-      <div class="nav-content">
-        <div class="nav-logo">
-          <img src="@/assets/icons/logo.png" alt="VocaSense Logo" class="nav-logo-img" />
-        </div>
-        <div class="nav-links">
-          <a href="#" class="nav-link active" @click.prevent="scrollTo('top')">Home</a>
-          <a href="#how-it-works" class="nav-link" @click.prevent="scrollTo('how-it-works')">How it Works</a>
-          <a href="#" class="nav-link" @click.prevent="goToSignUp">Sign up</a>
-        </div>
-        <button class="btn-login" @click="goToLogin">Login</button>
-      </div>
-    </nav>
+    <Navbar @scroll-to="scrollTo" />
 
     <!-- Hero Section -->
     <section class="hero-section">
@@ -201,7 +189,7 @@
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
+import Navbar from '@/components/NavBar.vue'
 
 const router = useRouter()
 
@@ -233,67 +221,6 @@ const scrollTo = (id) => {
 
 .br-mobile {
   display: none;
-}
-
-/* ── Navbar ── */
-.navbar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid rgba(101, 148, 228, 0.12);
-  padding: 0 40px;
-}
-
-.nav-content {
-  max-width: 1100px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  height: 64px;
-  gap: 32px;
-}
-
-.nav-logo {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.nav-logo-img {
-  height: 38px;
-  width: auto;
-  object-fit: contain;
-}
-
-.nav-brand {
-  font-size: 18px;
-  font-weight: 700;
-  background: linear-gradient(102deg, #95B9F7 8.63%, #6594E4 92.33%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  margin-left: auto;
-}
-
-.nav-link {
-  font-size: 14px;
-  font-weight: 500;
-  color: #555;
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.nav-link:hover,
-.nav-link.active {
-  color: #6594E4;
 }
 
 .btn-login {
@@ -341,7 +268,7 @@ const scrollTo = (id) => {
 
 .hero-title {
   font-family: 'Poppins', sans-serif;
-  font-size: 32px;
+  font-size: 2.5rem;
   font-style: normal;
   font-weight: 700;
   line-height: 1.35;
@@ -378,13 +305,13 @@ const scrollTo = (id) => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 20px;
+  padding: 20px 50px;
   background: linear-gradient(102deg, #95B9F7 8.63%, #6594E4 92.33%);
   color: white;
   border: none;
-  border-radius: 30px;
+  border-radius: 50px;
   font-family: 'Poppins', sans-serif;
-  font-size: 14px;
+  font-size: 1.2rem;
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.2s, transform 0.1s;
@@ -543,7 +470,7 @@ const scrollTo = (id) => {
 }
 
 .why-title {
-  font-size: 28px;
+  font-size: 1.75rem;
   font-weight: 700;
   color: #1a1a2e;
   margin-bottom: 8px;
@@ -767,7 +694,71 @@ const scrollTo = (id) => {
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .footer {
-    display: none;
+    padding: 24px 20px;
+    border-top: 1px solid rgba(101, 148, 228, 0.12);
+  }
+
+  .footer-content {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    gap: 24px;
+    margin-bottom: 20px;
+  }
+
+  .footer-brand {
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .footer-logo {
+    justify-content: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .footer-logo-img {
+    height: 44px;
+  }
+
+  .footer-desc {
+    margin-bottom: 6px;
+  }
+
+  .footer-tagline {
+    white-space: normal;
+  }
+
+
+  .footer-links {
+    margin-left: 0;
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    gap: 0;
+  }
+
+  /* คอลัมน์ที่ 1 (Product) ให้เนื้อหาชิดซ้าย */
+  .footer-links .footer-col:nth-child(1) {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  /* คอลัมน์ที่ 2 (Company / About) ให้เนื้อหาชิดขวา */
+  .footer-links .footer-col:nth-child(2) {
+    align-items: flex-end; /* ✅ สั่งให้ข้อความ About / Contact แนบชิดกำแพงขอบขวา */
+    text-align: right;     /* ✅ ตัวอักษรจัดชิดขวา */
+  }
+
+  /* ส่วนข้อความลิขสิทธิ์และคำเตือนด้านล่างเส้นคั่น */
+  .footer-bottom {
+    flex-direction: column; /* ปรับเป็นแนวตั้งเพื่อให้แสดงผลเคลียร์และชิดซ้ายสวยงามบนมือถือ */
+    align-items: flex-start;
+    text-align: left;
+    gap: 8px;              /* ลดช่องไฟระหว่างข้อความ */
+    padding-top: 16px;
+    width: 100%;
   }
 
   .nav-links {
