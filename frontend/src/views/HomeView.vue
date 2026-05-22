@@ -19,7 +19,7 @@
         Detect early signs of vocal strain and fatigue with acoustic analysis. For voice professionals and anyone who cares about their voice.
       </p>
 
-      <button class="btn-cta">
+      <button class="btn-cta" @click="goToRecording">
         <img src="@/assets/icons/Microphone.png" alt="" class="btn-cta-mic" />
         Try Voice Test Now!
         <span class="btn-cta-arrow">→</span>
@@ -130,7 +130,7 @@
       </div>
       <h2 class="cta-title">Start Monitoring Your Voice<br class="br-mobile" /> Health Today</h2>
       <p class="cta-subtitle">Detect early warning signs and protect your voice before it's too late</p>
-      <button class="btn-cta">
+      <button class="btn-cta" @click="goToRecording">
         <img src="@/assets/icons/Microphone.png" alt="" class="btn-cta-mic" />
         Try Voice Test Now!
         <span class="btn-cta-arrow">→</span>
@@ -191,6 +191,11 @@
 <script setup>
 import Navbar from '@/components/NavBar.vue'
 
+const router = useRouter()
+
+const goToLogin = () => router.push('/login')
+const goToSignUp = () => router.push('/signup')
+const goToRecording = () => router.push('/recording')
 
 const scrollTo = (id) => {
   const el = document.getElementById(id)
