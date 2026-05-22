@@ -1,7 +1,7 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.input_validator import analyze_voice_sample
+from input_validator import analyze_voice_sample
 
 app = FastAPI(title="VocaSense API")
 
