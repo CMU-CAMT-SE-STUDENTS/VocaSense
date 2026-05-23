@@ -855,7 +855,7 @@ const analyzeVoice = () => {
     sampleAccepted: voiceDetected.value,
     validation: lastVoiceValidation.value,
   })
-  // TODO: navigate to analysis page when the voice-health analysis view is ready.
+  router.push({ name: 'analysis' })
 }
 
 // ── Noise during recording
