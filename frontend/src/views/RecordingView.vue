@@ -347,9 +347,24 @@ const recordedAudioUrl    = ref(null)
 const recordedAudioBlob   = ref(null)
 const recordedWavBlob     = ref(null)
 const lastVoiceValidation = ref(null)
+const REASON_MAP = {
+  'Audio is too short.': 'Recording is too short. Hold "Ahhhh" for at least 3 seconds.',
+  'The voiced part is not continuous enough.': 'Keep the sound continuous. Try not to stop in the middle.',
+  'Voiced duration is too short.': 'Hold "Ahhhh" longer. Aim for at least 3 seconds.',
+  'Repeated syllable-like attacks were detected.': 'Say one long "Ahhhh". Avoid repeating short sounds.',
+  'Amplitude changes look like running speech rather than one held Ah.': 'Hold one steady "Ahhhh". Do not speak normally.',
+  'The voice has too many gaps.': 'Keep the sound going the whole time. Do not pause.',
+  'The sound changes too much, like speech rather than a held vowel.': 'Hold a steady "Ahhhh". Try not to change the sound.',
+  'Spectral changes look like consonants or changing vowels, not sustained Ah.': 'Say a clear, steady "Ahhhh" from start to finish.',
+  'Too much high-frequency consonant-like energy was detected.': 'Use a soft open "Ahhhh". Avoid hissing or sharp sounds.',
+  'The vowel band is too weak for an Ah-like sample.': 'Open your mouth wider. Say "Ahhhh" more clearly.',
+  'Not enough voiced pitch was detected.': 'Speak louder so your voice is clearly heard.',
+}
+
 const validationReasons = computed(() => {
   const reasons = lastVoiceValidation.value?.ah_validation?.reasons
     ?.filter(r => !r.toLowerCase().startsWith('snr'))
+    ?.map(r => REASON_MAP[r] ?? r)
   return reasons?.length ? reasons : ['Voice unclear — say "Ahhhh" louder and hold for 3 seconds.']
 })
 
