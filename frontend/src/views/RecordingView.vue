@@ -88,8 +88,19 @@
         <div v-if="!voiceDetected" class="main-card">
           <img src="@/assets/icons/notcomplete.png" alt="Failed" class="complete-check-img" />
           <h1 class="complete-title">Recording Failed</h1>
-          <p class="complete-subtitle">No voice was detected. Please speak clearly and try again.</p>
-          <button class="btn-analyze" @click="recordAgain">Record Again</button>
+
+          <div class="error-reasons">
+            <div
+              v-for="(reason, i) in validationReasons"
+              :key="i"
+              class="error-reason-item"
+            >
+              <span class="error-reason-icon">!</span>
+              <span class="error-reason-text">{{ reason }}</span>
+            </div>
+          </div>
+
+          <button class="btn-analyze" @click="recordAgain">Try Again</button>
         </div>
 
         <!-- Voice detected → Recording Complete -->
@@ -336,6 +347,26 @@ const recordedAudioUrl    = ref(null)
 const recordedAudioBlob   = ref(null)
 const recordedWavBlob     = ref(null)
 const lastVoiceValidation = ref(null)
+const REASON_MAP = {
+  'Audio is too short.': 'Recording is too short. Hold "Ahhhh" for at least 3 seconds.',
+  'The voiced part is not continuous enough.': 'Keep the sound continuous. Try not to stop in the middle.',
+  'Voiced duration is too short.': 'Hold "Ahhhh" longer. Aim for at least 3 seconds.',
+  'Repeated syllable-like attacks were detected.': 'Say one long "Ahhhh". Avoid repeating short sounds.',
+  'Amplitude changes look like running speech rather than one held Ah.': 'Hold one steady "Ahhhh". Do not speak normally.',
+  'The voice has too many gaps.': 'Keep the sound going the whole time. Do not pause.',
+  'The sound changes too much, like speech rather than a held vowel.': 'Hold a steady "Ahhhh". Try not to change the sound.',
+  'Spectral changes look like consonants or changing vowels, not sustained Ah.': 'Say a clear, steady "Ahhhh" from start to finish.',
+  'Too much high-frequency consonant-like energy was detected.': 'Use a soft open "Ahhhh". Avoid hissing or sharp sounds.',
+  'The vowel band is too weak for an Ah-like sample.': 'Open your mouth wider. Say "Ahhhh" more clearly.',
+  'Not enough voiced pitch was detected.': 'Speak louder so your voice is clearly heard.',
+}
+
+const validationReasons = computed(() => {
+  const reasons = lastVoiceValidation.value?.ah_validation?.reasons
+    ?.filter(r => !r.toLowerCase().startsWith('snr'))
+    ?.map(r => REASON_MAP[r] ?? r)
+  return reasons?.length ? reasons : ['Voice unclear — say "Ahhhh" louder and hold for 3 seconds.']
+})
 
 // ── Recorded audio playback
 const isPlayingRecording    = ref(false)
@@ -1277,6 +1308,41 @@ onUnmounted(() => {
 .complete-actions {
   display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
   margin-top: 0;
+}
+.error-reasons {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.error-reason-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff5f5;
+  border: 1px solid #fca5a5;
+  border-radius: 50px;
+  padding: 10px 16px;
+}
+.error-reason-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #ef4444;
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.error-reason-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: #ef4444;
 }
 .btn-analyze {
   padding: 12px 32px;
