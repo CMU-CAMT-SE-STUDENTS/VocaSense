@@ -30,7 +30,7 @@
             <!-- History Button -->
             <button class="btn-dropdown-item" @click="goToHistory">History</button>
             <hr class="dropdown-divider" />
-            <button class="btn-dropdown-logout" @click="handleLogout">Logout</button>
+            <button class="btn-dropdown-logout" @click="handleLogout">Log Out</button>
           </div>
         </div>
 
@@ -66,7 +66,7 @@
           <hr class="mobile-menu-divider" />
 
           <a href="#" class="nav-link-mobile" @click.prevent="goToHistory">History</a>
-          <button class="nav-link-mobile btn-logout-mobile-stacked" @click="handleLogout">Logout</button>
+          <button class="nav-link-mobile btn-logout-mobile-stacked" @click="handleLogout">Log Out</button>
         </div>
         <template v-else>
           <a href="#" class="nav-link-mobile" @click.prevent="goToSignUp">Sign up</a>
@@ -131,7 +131,7 @@ const handleLogout = async () => {
   closeMenu()
   closeProfileMenu()
   await supabase.auth.signOut()
-  router.push('/')
+  router.push('/?loggedOut=true')
 }
 
 onMounted(async () => {
