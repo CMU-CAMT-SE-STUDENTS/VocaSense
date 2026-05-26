@@ -62,7 +62,7 @@
           </p>
 
           <!-- Login Button -->
-          <button type="submit" class="btn-primary">Login</button>
+          <button type="submit" class="btn-primary">Log In</button>
 
           <!-- Divider -->
           <div class="divider">
@@ -83,6 +83,26 @@
       </div>
     </div>
   </div>
+
+  <!-- Toast Notification -->
+  <transition name="toast">
+    <div v-if="toast.show" class="toast" :class="toast.type">
+      <div class="toast-icon">
+        <svg v-if="toast.type === 'success'" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <span class="toast-message">{{ toast.message }}</span>
+      <button class="toast-close" @click="toast.show = false">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </transition>
 </template>
 
 <script setup>
@@ -92,6 +112,17 @@ import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const showPassword = ref(false)
+
+const toast = reactive({ show: false, message: '', type: 'success' })
+let toastTimer = null
+
+const showToast = (message, type = 'success', duration = 3000) => {
+  if (toastTimer) clearTimeout(toastTimer)
+  toast.message = message
+  toast.type = type
+  toast.show = true
+  toastTimer = setTimeout(() => { toast.show = false }, duration)
+}
 
 const form = reactive({
   identifier: '',
@@ -109,7 +140,7 @@ const validate = () => {
   errors.password = ''
 
   if (!form.identifier.trim()) {
-    errors.identifier = 'Username or email is required'
+    errors.identifier = 'Email or username is required'
     valid = false
   }
 
@@ -148,15 +179,18 @@ const handleSubmit = async () => {
       })
       if (error) {
         console.error('Login error:', error)
-        errors.password = 'Invalid credentials'
+        errors.password = 'Invalid email/username or password'
       } else {
         console.log('Login successful:', data)
-        router.push('/')
+
+        showToast('Logged in successfully!')
+        setTimeout(() => router.push('/'), 700)
+
       }
     }
     catch (err) {
       console.error('Login error:', err)
-      errors.password = 'An unexpected error occurred. Please try again.'
+      showToast('The system cannot connect to the database. Please try again later.', 'error')
     }
   }
 }
@@ -311,6 +345,15 @@ const goToForgotPassword = () => {
   position: relative;
 }
 
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  visibility: hidden;
+}
+
 .password-input {
   padding-right: 42px;
 }
@@ -441,6 +484,82 @@ const goToForgotPassword = () => {
 
 .auth-link:hover {
   text-decoration: underline;
+}
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  top: 28px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  min-width: 260px;
+  max-width: 360px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 9999;
+  font-family: 'Poppins', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.toast.success {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.toast.error {
+  background: #fff1f2;
+  color: #9f1239;
+  border: 1px solid #fecdd3;
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.toast-message {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+  color: inherit;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+.toast-enter-active {
+  animation: slideIn 0.1s ease;
+}
+
+.toast-leave-active {
+  animation: slideOut 0.1s ease forwards;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes slideOut {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(110%); opacity: 0; }
 }
 
 /* ── Responsive ── */
