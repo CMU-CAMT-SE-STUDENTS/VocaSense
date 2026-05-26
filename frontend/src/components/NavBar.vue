@@ -23,14 +23,20 @@
           <!-- Profile Dropdown -->
           <div v-if="isProfileMenuOpen" class="avatar-dropdown">
             <div class="dropdown-user-info">
+              <div class="avatar-gradient-sm">{{ firstLetter }}</div>
               <p class="user-name-display">{{ username }}</p>
             </div>
             <hr class="dropdown-divider" />
 
-            <!-- History Button -->
-            <button class="btn-dropdown-item" @click="goToHistory">History</button>
+            <button class="btn-dropdown-item" @click="goToHistory">
+              <img src="@/assets/icons/history-svgrepo-com.svg" class="dropdown-icon" />
+              Voice history
+            </button>
             <hr class="dropdown-divider" />
-            <button class="btn-dropdown-logout" @click="handleLogout">Logout</button>
+            <button class="btn-dropdown-logout" @click="handleLogout">
+              <img src="@/assets/icons/logout-svgrepo-com.svg" class="dropdown-icon icon-logout-red" />
+              Log Out
+            </button>
           </div>
         </div>
 
@@ -38,43 +44,81 @@
         <button v-else class="btn-login" @click="goToLogin">Login</button>
       </div>
 
-      <!-- Mobile Menu Toggle -->
-      <button
-        class="menu-toggle mobile-only"
-        :class="{ 'is-active': isMenuOpen }"
-        @click="toggleMenu"
-        aria-label="Toggle navigation"
-      >
-        <span class="bar"></span>
-        <span class="bar"></span>
-        <span class="bar"></span>
-      </button>
+      <!-- Mobile nav right: hamburger + avatar (logged in) -->
+      <div class="mobile-nav-right mobile-only">
+        <!-- Hamburger -->
+        <button
+          class="menu-toggle"
+          :class="{ 'is-active': isMenuOpen }"
+          @click="toggleMenu"
+          aria-label="Toggle navigation"
+        >
+          <span class="bar"></span>
+          <span class="bar"></span>
+          <span class="bar"></span>
+        </button>
+
+        <!-- Mobile Avatar -->
+        <div v-if="user" class="mobile-avatar-container" v-click-outside="closeMobileProfileMenu">
+          <div class="avatar-gradient" @click="toggleMobileProfileMenu">
+            {{ firstLetter }}
+          </div>
+          <!-- Mobile Profile Dropdown -->
+          <div v-if="isMobileProfileMenuOpen" class="avatar-dropdown">
+            <div class="dropdown-user-info">
+              <div class="avatar-gradient-sm">{{ firstLetter }}</div>
+              <p class="user-name-display">{{ username }}</p>
+            </div>
+            <hr class="dropdown-divider" />
+            <button class="btn-dropdown-item" @click="goToHistory">
+              <img src="@/assets/icons/history-svgrepo-com.svg" class="dropdown-icon" />
+              Voice history
+            </button>
+            <hr class="dropdown-divider" />
+            <button class="btn-dropdown-logout" @click="handleLogout">
+              <img src="@/assets/icons/logout-svgrepo-com.svg" class="dropdown-icon icon-logout-red" />
+              Log Out
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Mobile Menu -->
     <div class="nav-menu-mobile mobile-only" :class="{ 'is-open': isMenuOpen }">
+      <ul class="mobile-menu-list">
 
+        <!-- Home -->
+        <li class="mobile-menu-item" @click="handleScroll('top')">
+          <img src="@/assets/icons/home-svgrepo-com.svg" class="menu-item-icon" />
+          <span class="text-home">Home</span>
+        </li>
 
-      <!-- Auth Zone for Mobile -->
-      <div class="auth-zone-mobile">
-        <div v-if="user" class="mobile-user-menu">
-          <div class="mobile-user-info">
-            <div class="avatar-gradient-mobile">{{ firstLetter }}</div>
-            <span class="mobile-username">{{ username }}</span>
-          </div>
+        <!-- How it Works -->
+        <li class="mobile-menu-item" @click="handleScroll('how-it-works')">
+          <img src="@/assets/icons/circle-info-svgrepo-com.svg" class="menu-item-icon" />
+          <span>How it works</span>
+        </li>
 
-          <hr class="mobile-menu-divider" />
+        <!-- Login (not logged in) -->
+        <li v-if="!user" class="mobile-menu-item auth-item" @click="goToLogin">
+          <svg class="menu-item-icon icon-login" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M8 6C8 3.79086 9.79086 2 12 2H17.5C19.9853 2 22 4.01472 22 6.5V17.5C22 19.9853 19.9853 22 17.5 22H12C9.79086 22 8 20.2091 8 18V17C8 16.4477 8.44772 16 9 16C9.55228 16 10 16.4477 10 17V18C10 19.1046 10.8954 20 12 20H17.5C18.8807 20 20 18.8807 20 17.5V6.5C20 5.11929 18.8807 4 17.5 4H12C10.8954 4 10 4.89543 10 6V7C10 7.55228 9.55228 8 9 8C8.44772 8 8 7.55228 8 7V6ZM12.2929 8.29289C12.6834 7.90237 13.3166 7.90237 13.7071 8.29289L16.7071 11.2929C17.0976 11.6834 17.0976 12.3166 16.7071 12.7071L13.7071 15.7071C13.3166 16.0976 12.6834 16.0976 12.2929 15.7071C11.9024 15.3166 11.9024 14.6834 12.2929 14.2929L13.5858 13L5 13C4.44772 13 4 12.5523 4 12C4 11.4477 4.44772 11 5 11L13.5858 11L12.2929 9.70711C11.9024 9.31658 11.9024 8.68342 12.2929 8.29289Z" fill="currentColor"/>
+          </svg>
+          <span class="text-login">Login</span>
+        </li>
 
-          <a href="#" class="nav-link-mobile" @click.prevent="goToHistory">History</a>
-          <button class="nav-link-mobile btn-logout-mobile-stacked" @click="handleLogout">Logout</button>
-        </div>
-        <template v-else>
-          <a href="#" class="nav-link-mobile" @click.prevent="goToSignUp">Sign up</a>
-          <button class="btn-login-mobile" @click="goToLogin">Login</button>
-        </template>
-      </div>
-       <a href="#" class="nav-link-mobile" @click.prevent="handleScroll('top')">Home</a>
-      <a href="#how-it-works" class="nav-link-mobile" @click.prevent="handleScroll('how-it-works')">How it Works</a>
+        <!-- Sign Up (not logged in) -->
+        <li v-if="!user" class="mobile-menu-item auth-item" @click="goToSignUp">
+          <svg class="menu-item-icon" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="32 14 28 14 28 10 26 10 26 14 22 14 22 16 26 16 26 20 28 20 28 16 32 16 32 14"/>
+            <path d="M12,4A5,5,0,1,1,7,9a5,5,0,0,1,5-5m0-2a7,7,0,1,0,7,7A7,7,0,0,0,12,2Z"/>
+            <path d="M22,30H20V25a5,5,0,0,0-5-5H9a5,5,0,0,0-5,5v5H2V25a7,7,0,0,1,7-7h6a7,7,0,0,1,7,7Z"/>
+          </svg>
+          <span>Sign up</span>
+        </li>
+
+      </ul>
     </div>
   </nav>
 </template>
@@ -89,6 +133,7 @@ const router = useRouter()
 
 const isMenuOpen = ref(false)
 const isProfileMenuOpen = ref(false)
+const isMobileProfileMenuOpen = ref(false)
 const user = ref(null)
 
 const username = computed(() => {
@@ -103,6 +148,7 @@ const firstLetter = computed(() => {
 const goToHistory = () => {
   closeMenu()
   closeProfileMenu()
+  closeMobileProfileMenu()
   router.push('/history')
 }
 
@@ -115,7 +161,18 @@ const closeProfileMenu = () => {
   isProfileMenuOpen.value = false
 }
 
+const toggleMobileProfileMenu = (event) => {
+  event.stopPropagation()
+  isMenuOpen.value = false
+  isMobileProfileMenuOpen.value = !isMobileProfileMenuOpen.value
+}
+
+const closeMobileProfileMenu = () => {
+  isMobileProfileMenuOpen.value = false
+}
+
 const toggleMenu = () => {
+  isMobileProfileMenuOpen.value = false
   isMenuOpen.value = !isMenuOpen.value
 }
 
@@ -130,8 +187,9 @@ const handleScroll = (id) => { closeMenu(); emit('scroll-to', id) }
 const handleLogout = async () => {
   closeMenu()
   closeProfileMenu()
+  closeMobileProfileMenu()
   await supabase.auth.signOut()
-  router.push('/')
+  router.push('/?loggedOut=true')
 }
 
 onMounted(async () => {
@@ -269,7 +327,7 @@ const vClickOutside = {
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   border: 1px solid rgba(101, 148, 228, 0.15);
-  min-width: 160px;
+  min-width: 185px;
   padding: 8px 0;
   display: flex;
   flex-direction: column;
@@ -277,25 +335,53 @@ const vClickOutside = {
 }
 
 .dropdown-user-info {
-  padding: 6px 16px 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px 10px;
+}
+
+.avatar-gradient-sm {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #A5C4F7 0%, #6594E4 100%);
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .user-name-display {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   color: #1a1a2e;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin: 0;
 }
 
 .dropdown-divider {
   border: 0;
-  border-top: 1px solid #b4b3d8;
-  margin: 4px 0;
+  border-top: 1px solid #e8eaf0;
+  margin: 2px 0;
 }
 
-/* สไตล์ปุ่มทั่วไปใน Dropdown (เช่น ปุ่ม History) */
+.dropdown-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.icon-logout-red {
+  filter: invert(47%) sepia(98%) saturate(1000%) hue-rotate(314deg) brightness(105%) contrast(101%);
+}
+
 .btn-dropdown-item {
   background: transparent;
   border: none;
@@ -303,16 +389,23 @@ const vClickOutside = {
   font-family: 'Poppins', sans-serif;
   font-size: 13px;
   font-weight: 500;
-  padding: 8px 16px;
+  padding: 10px 16px;
   text-align: left;
   cursor: pointer;
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   transition: background 0.2s, color 0.2s;
 }
 
 .btn-dropdown-item:hover {
   background: #F4F7FF;
   color: #6594E4;
+}
+
+.btn-dropdown-item:hover .dropdown-icon {
+  filter: invert(44%) sepia(53%) saturate(500%) hue-rotate(192deg) brightness(99%) contrast(93%);
 }
 
 .btn-dropdown-logout {
@@ -322,10 +415,13 @@ const vClickOutside = {
   font-family: 'Poppins', sans-serif;
   font-size: 13px;
   font-weight: 600;
-  padding: 8px 16px;
+  padding: 10px 16px;
   text-align: left;
   cursor: pointer;
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   transition: background 0.2s;
 }
 
@@ -338,8 +434,20 @@ const vClickOutside = {
   display: none !important;
 }
 
-.menu-toggle {
+.mobile-nav-right {
   display: none;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+
+.mobile-avatar-container {
+  position: relative;
+  display: inline-block;
+}
+
+.menu-toggle {
+  display: flex;
   flex-direction: column;
   justify-content: space-between;
   width: 24px;
@@ -364,21 +472,18 @@ const vClickOutside = {
 .menu-toggle.is-active .bar:nth-child(3) { transform: translateY(-7.5px) rotate(-45deg); }
 
 .nav-menu-mobile {
-  position: absolute;
+  position: fixed;
   top: 64px;
   left: 0;
-  width: 100%;
-  background: rgba(255, 255, 255, 0.98);
+  right: 0;
+  background: #ffffff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   border-bottom: 1px solid rgba(101, 148, 228, 0.12);
-  padding: 24px;
-  flex-direction: column;
-  gap: 16px;
-  align-items: center;
   opacity: 0;
   transform: translateY(-10px);
   transition: opacity 0.3s ease, transform 0.3s ease;
   pointer-events: none;
+  z-index: 99;
 }
 
 .nav-menu-mobile.is-open {
@@ -387,103 +492,109 @@ const vClickOutside = {
   pointer-events: auto;
 }
 
-.nav-link-mobile {
-  font-size: 16px;
-  font-weight: 500;
-  color: #555;
-  text-decoration: none;
+.mobile-menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   width: 100%;
-  text-align: center;
-  padding: 10px 0;
-  display: block;
-  transition: color 0.2s;
 }
 
-.nav-link-mobile:hover {
-  color: #6594E4;
-}
-
-.auth-zone-mobile {
-  width: 80%;
-  border: solid 3px rgba(101, 148, 228, 0.486);
-  border-radius: 1rem;
-  padding: 10px;
-}
-
-.btn-login-mobile {
-  width: 100%;
-  max-width: 200px;
-  padding: 10px 24px;
-  background: linear-gradient(102deg, #95B9F7 8.63%, #6594E4 92.33%);
-  color: white;
-  border: none;
-  border-radius: 20px;
+.mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 24px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
   font-family: 'Poppins', sans-serif;
   font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  margin: 8px auto 0;
-  display: block;
+  font-weight: 500;
+  color: #333;
+  line-height: 1;
 }
 
-.mobile-user-menu {
-  width: 100%;
+.mobile-menu-item span {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  line-height: 22px;
 }
 
-.mobile-user-info {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 8px 0;
-  width: 100%;
+.mobile-menu-item:active,
+.mobile-menu-item.is-active {
+  background: #6594E4;
+  color: #ffffff;
 }
 
-.avatar-gradient-mobile {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #A5C4F7 0%, #6594E4 100%);
-  color: #FFFFFF;
-  font-size: 30px;
-  font-weight: 700;
+.mobile-menu-item:active .menu-item-icon,
+.mobile-menu-item:active .menu-item-arrow,
+.mobile-menu-item.is-active .menu-item-icon,
+.mobile-menu-item.is-active .menu-item-arrow {
+  filter: brightness(0) invert(1);
+}
+
+.menu-item-left {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 14px;
+}
+
+.menu-item-icon {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  object-fit: contain;
   flex-shrink: 0;
 }
 
-.mobile-username {
-  font-size: 18px;
+.icon-login {
+  margin-left: -4px;
+}
+
+.text-login {
+  margin-left: 5px;
+}
+
+.auth-item {
+  color: #6594E4;
   font-weight: 600;
-  color: #1a1a2e;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.mobile-menu-divider {
-  border: 0;
-  border-top: 2px solid #c0d4f8;
-  width: 60%;
-  margin: 12px 0 4px;
+.auth-item:active {
+  background: #6594E4;
+  color: #ffffff;
 }
 
-.btn-logout-mobile-stacked {
-  background: transparent;
-  border: none;
+.text-home {
+  padding-top: 2px;
+}
+
+.menu-item-arrow {
+  width: 18px;
+  height: 18px;
+  opacity: 0.4;
+}
+
+.logout-item {
   color: #FF5C5C;
-  font-family: 'Poppins', sans-serif;
-  cursor: pointer;
 }
 
-.btn-logout-mobile-stacked:hover {
-  color: #e04444;
+.icon-logout {
+  filter: invert(47%) sepia(98%) saturate(1000%) hue-rotate(314deg) brightness(105%) contrast(101%);
+  width: 26px;
+  height: 26px;
+  margin-left: -5px;
 }
+
+.logout-item:active {
+  background: #FF5C5C;
+  color: #ffffff;
+}
+
+.logout-item:active .icon-logout {
+  filter: brightness(0) invert(1);
+}
+
 
 /* Helper Classes */
 .desktop-only { display: flex; }
@@ -499,6 +610,6 @@ const vClickOutside = {
   .navbar { padding: 0 20px; }
   .desktop-only { display: none !important; }
   .mobile-only { display: flex !important; }
-  .menu-toggle { display: flex; margin-left: auto; }
+  .mobile-nav-right { display: flex; }
 }
 </style>

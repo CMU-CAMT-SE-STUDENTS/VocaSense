@@ -186,13 +186,44 @@
       </div>
     </footer>
   </div>
+
+  <!-- Toast Notification -->
+  <transition name="toast">
+    <div v-if="toastShow" class="toast-logout">
+      <div class="toast-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </div>
+      <span class="toast-message">Log out complete</span>
+      <button class="toast-close" @click="toastShow = false">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </transition>
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
+import { ref, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import Navbar from '@/components/NavBar.vue'
 
 const router = useRouter()
+const route = useRoute()
+const toastShow = ref(false)
+
+const checkLoggedOut = () => {
+  if (route.query.loggedOut === 'true') {
+    toastShow.value = true
+    setTimeout(() => { toastShow.value = false }, 3000)
+    router.replace('/')
+  }
+}
+
+onMounted(checkLoggedOut)
+watch(() => route.query.loggedOut, checkLoggedOut)
 
 const goToLogin = () => router.push('/login')
 const goToSignUp = () => router.push('/signup')
@@ -207,6 +238,64 @@ const scrollTo = (id) => {
 
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+.toast-logout {
+  position: fixed;
+  top: 28px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  min-width: 260px;
+  max-width: 360px;
+  background: #fff1f2;
+  color: #9f1239;
+  border: 1px solid #fecdd3;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  font-family: 'Poppins', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 9999;
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.toast-message {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+  color: inherit;
+}
+
+.toast-close:hover { opacity: 1; }
+
+.toast-enter-active { animation: slideIn 0.1s ease; }
+.toast-leave-active { animation: slideOut 0.1s ease forwards; }
+
+@keyframes slideIn {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes slideOut {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(110%); opacity: 0; }
+}
 
 * {
   box-sizing: border-box;
@@ -735,29 +824,21 @@ const scrollTo = (id) => {
   .footer-links {
     margin-left: 0;
     display: flex;
-    justify-content: space-between;
     width: 100%;
     gap: 0;
   }
 
-  /* คอลัมน์ที่ 1 (Product) ให้เนื้อหาชิดซ้าย */
-  .footer-links .footer-col:nth-child(1) {
+  .footer-links .footer-col {
+    flex: 1;
     align-items: flex-start;
     text-align: left;
   }
 
-  /* คอลัมน์ที่ 2 (Company / About) ให้เนื้อหาชิดขวา */
-  .footer-links .footer-col:nth-child(2) {
-    align-items: flex-end; /* ✅ สั่งให้ข้อความ About / Contact แนบชิดกำแพงขอบขวา */
-    text-align: right;     /* ✅ ตัวอักษรจัดชิดขวา */
-  }
-
-  /* ส่วนข้อความลิขสิทธิ์และคำเตือนด้านล่างเส้นคั่น */
   .footer-bottom {
-    flex-direction: column; /* ปรับเป็นแนวตั้งเพื่อให้แสดงผลเคลียร์และชิดซ้ายสวยงามบนมือถือ */
-    align-items: flex-start;
-    text-align: left;
-    gap: 8px;              /* ลดช่องไฟระหว่างข้อความ */
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
     padding-top: 16px;
     width: 100%;
   }
@@ -834,10 +915,6 @@ const scrollTo = (id) => {
     gap: 32px;
   }
 
-  .footer-bottom {
-    flex-direction: column;
-    text-align: center;
-  }
 }
 
 @media (max-width: 480px) {
