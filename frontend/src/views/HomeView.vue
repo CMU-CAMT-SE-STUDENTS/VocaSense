@@ -824,29 +824,21 @@ const scrollTo = (id) => {
   .footer-links {
     margin-left: 0;
     display: flex;
-    justify-content: space-between;
     width: 100%;
     gap: 0;
   }
 
-  /* คอลัมน์ที่ 1 (Product) ให้เนื้อหาชิดซ้าย */
-  .footer-links .footer-col:nth-child(1) {
+  .footer-links .footer-col {
+    flex: 1;
     align-items: flex-start;
     text-align: left;
   }
 
-  /* คอลัมน์ที่ 2 (Company / About) ให้เนื้อหาชิดขวา */
-  .footer-links .footer-col:nth-child(2) {
-    align-items: flex-end; /* ✅ สั่งให้ข้อความ About / Contact แนบชิดกำแพงขอบขวา */
-    text-align: right;     /* ✅ ตัวอักษรจัดชิดขวา */
-  }
-
-  /* ส่วนข้อความลิขสิทธิ์และคำเตือนด้านล่างเส้นคั่น */
   .footer-bottom {
-    flex-direction: column; /* ปรับเป็นแนวตั้งเพื่อให้แสดงผลเคลียร์และชิดซ้ายสวยงามบนมือถือ */
-    align-items: flex-start;
-    text-align: left;
-    gap: 8px;              /* ลดช่องไฟระหว่างข้อความ */
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
     padding-top: 16px;
     width: 100%;
   }
@@ -923,10 +915,6 @@ const scrollTo = (id) => {
     gap: 32px;
   }
 
-  .footer-bottom {
-    flex-direction: column;
-    text-align: center;
-  }
 }
 
 @media (max-width: 480px) {
