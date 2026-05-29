@@ -93,6 +93,20 @@
               </button>
             </div>
             <span v-if="errors.password" class="error-text">{{ errors.password }}</span>
+            <div v-if="form.password" class="password-requirements">
+              <div class="req-item" :class="{ met: passwordChecks.length }">
+                <span class="req-icon">{{ passwordChecks.length ? '✓' : '○' }}</span>
+                At least 8 characters
+              </div>
+              <div class="req-item" :class="{ met: passwordChecks.uppercase }">
+                <span class="req-icon">{{ passwordChecks.uppercase ? '✓' : '○' }}</span>
+                At least 1 uppercase letter
+              </div>
+              <div class="req-item" :class="{ met: passwordChecks.number }">
+                <span class="req-icon">{{ passwordChecks.number ? '✓' : '○' }}</span>
+                At least 1 number
+              </div>
+            </div>
           </div>
 
           <!-- Server Error -->
@@ -133,7 +147,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 
@@ -167,6 +181,12 @@ const errors = reactive({
   email: '',
   password: ''
 })
+
+const passwordChecks = computed(() => ({
+  length:    form.password.length >= 8,
+  uppercase: /[A-Z]/.test(form.password),
+  number:    /[0-9]/.test(form.password)
+}))
 
 const validate = () => {
   let valid = true
@@ -460,6 +480,32 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 .server-error {
   font-size: 13px;
   margin-bottom: 8px;
+}
+
+.password-requirements {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.req-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #aaa;
+  transition: color 0.2s;
+}
+
+.req-item.met {
+  color: #16a34a;
+}
+
+.req-icon {
+  width: 14px;
+  text-align: center;
+  font-size: 12px;
 }
 
 /* ── Button ── */
