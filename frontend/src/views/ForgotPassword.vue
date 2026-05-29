@@ -22,6 +22,8 @@
           <span v-if="errors.email" class="error-text">{{ errors.email }}</span>
         </div>
 
+        <span v-if="serverError" class="error-text server-error">{{ serverError }}</span>
+
         <button type="submit" class="btn-primary" :disabled="submitted">
           {{ submitted ? 'Email Sent!' : 'Send Reset Link' }}
         </button>
@@ -41,6 +43,7 @@ import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const submitted = ref(false)
+const serverError = ref('')
 
 const form = reactive({ email: '' })
 const errors = reactive({ email: '' })
@@ -52,7 +55,7 @@ const validate = () => {
     return false
   }
   if (!form.email.includes('@')) {
-    errors.email = 'Please enter a valid email address'
+    errors.email = `Please include an '@' in the email address. '${form.email}' is missing an '@'`
     return false
   }
   return true
@@ -60,20 +63,28 @@ const validate = () => {
 
 const handleSubmit = async () => {
   if (validate()) {
-    console.log('Forgot password submitted:', form.email)
-    // TODO: connect to Supabase auth - sendPasswordResetEmail
-    try{
-      const {data, error} = await supabase.auth.resetPasswordForEmail(form.email, {
+    serverError.value = ''
+    try {
+      const { data: existingEmail } = await supabase
+        .from('account')
+        .select('email')
+        .eq('email', form.email)
+        .maybeSingle()
+
+      if (!existingEmail) {
+        errors.email = 'Email not found'
+        return
+      }
+
+      const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
         redirectTo: `${window.location.origin}/reset-password`
       })
-      if(error) throw error
+      if (error) throw error
 
-      console.log('Password reset email sent:', data)
       submitted.value = true
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Forgot password error:', err)
-      alert('An error occurred while sending the reset email. Please try again.')
+      serverError.value = 'The system cannot connect to the database. Please try again later.'
     }
   }
 }
@@ -188,6 +199,11 @@ form {
   font-size: 11px;
   color: #e53935;
   margin-top: 4px;
+}
+
+.server-error {
+  font-size: 13px;
+  margin-bottom: 8px;
 }
 
 /* ── Button ── */
