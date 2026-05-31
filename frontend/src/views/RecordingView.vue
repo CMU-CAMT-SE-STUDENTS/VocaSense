@@ -134,8 +134,8 @@
           </div>
 
           <div class="complete-actions">
-            <button class="btn-analyze" @click="analyzeVoice">Analyze Voice</button>
             <button class="btn-record-again" @click="recordAgain">Record Again</button>
+            <button class="btn-analyze" @click="analyzeVoice">Analyze Voice</button>
           </div>
         </div>
 
@@ -164,7 +164,7 @@
 
           <!-- Sample audio player (play-only) -->
           <div class="audio-player" @click="toggleSample" :class="{ 'player-playing': isPlayingSample }">
-            <button class="play-btn" @click.stop="toggleSample" :disabled="isPlayingSample">
+            <button class="play-btn" @click.stop="toggleSample">
               <svg v-if="!isPlayingSample" width="11" height="13" viewBox="0 0 11 13" fill="none">
                 <path d="M1 1L10 6.5L1 12V1Z" fill="white" />
               </svg>
@@ -183,6 +183,10 @@
             </div>
             <span class="audio-duration">5.0s</span>
           </div>
+
+          <p v-if="sampleLoadError" class="sample-error-text">
+            Unable to load voice example. Please try again.
+          </p>
 
           <!-- Instructions -->
           <div class="instructions">
@@ -286,12 +290,42 @@
       </div>
     </Transition>
 
+    <!-- Leave during recording modal -->
+    <Transition name="modal-fade">
+      <div v-if="showLeaveAlert" class="modal-overlay">
+        <div class="modal-card" @click.stop>
+          <img src="@/assets/icons/notcomplete.png" alt="" class="modal-leave-icon" />
+          <h3 class="modal-title">Leave Recording?</h3>
+          <p class="modal-desc">
+            Recording is in progress. If you leave now, your current recording will be discarded.
+          </p>
+          <button class="modal-btn modal-btn-red" @click="confirmLeave">Leave & Discard</button>
+          <button class="modal-dismiss" @click="cancelLeave">Keep Recording</button>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Record Again confirmation modal -->
+    <Transition name="modal-fade">
+      <div v-if="showRecordAgainAlert" class="modal-overlay">
+        <div class="modal-card" @click.stop>
+          <img src="@/assets/icons/notcomplete.png" alt="" class="modal-leave-icon" />
+          <h3 class="modal-title">Discard Recording?</h3>
+          <p class="modal-desc">
+            Your current recording will be permanently deleted. This action cannot be undone.
+          </p>
+          <button class="modal-btn modal-btn-red" @click="confirmRecordAgain">Discard & Re-record</button>
+          <button class="modal-dismiss" @click="cancelRecordAgain">Keep Recording</button>
+        </div>
+      </div>
+    </Transition>
+
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import sampleAudioSrc from '@/assets/audio/maonoNormal.mp3'
 
 const router = useRouter()
@@ -326,6 +360,7 @@ const waveformBars = [
 // ── Sample audio player (play-only)
 const isPlayingSample  = ref(false)
 const playProgress     = ref(0)
+const sampleLoadError  = ref(false)
 let sampleAudio        = null
 let sampleInterval     = null
 
@@ -386,6 +421,9 @@ let noiseCheckAnalyser = null
 const voiceDetected           = ref(false)
 const noiseDuringRec          = ref(false)
 const showNoiseDuringRecAlert = ref(false)
+const showLeaveAlert          = ref(false)
+const showRecordAgainAlert    = ref(false)
+let pendingNavNext            = null
 let voiceFrameCount           = 0
 let noiseDuringRecordingDetected = false
 
@@ -434,8 +472,6 @@ const goBack = () => router.push('/')
 
 // ── Sample audio
 const toggleSample = () => {
-  if (isPlayingSample.value) return
-
   if (!sampleAudio) {
     sampleAudio = new Audio(sampleAudioSrc)
     sampleAudio.addEventListener('ended', () => {
@@ -443,7 +479,21 @@ const toggleSample = () => {
       playProgress.value = 0
       clearInterval(sampleInterval)
     })
+    sampleAudio.addEventListener('error', () => {
+      isPlayingSample.value = false
+      playProgress.value = 0
+      clearInterval(sampleInterval)
+      sampleLoadError.value = true
+    })
   }
+
+  if (isPlayingSample.value) {
+    sampleAudio.pause()
+    clearInterval(sampleInterval)
+    isPlayingSample.value = false
+  }
+
+  sampleLoadError.value = false
   sampleAudio.currentTime = 0
   sampleAudio.play()
   isPlayingSample.value = true
@@ -663,6 +713,12 @@ const handleRecordButton = async () => {
 }
 
 const enterWaitingVoice = () => {
+  if (sampleAudio && isPlayingSample.value) {
+    sampleAudio.pause()
+    isPlayingSample.value = false
+    playProgress.value = 0
+    clearInterval(sampleInterval)
+  }
   voiceDetected.value   = false
   noiseDuringRec.value  = false
   voiceFrameCount       = 0
@@ -779,6 +835,14 @@ const toggleRecordingPlayback = () => {
 }
 
 const recordAgain = () => {
+  if (recordingStatus.value === 'completed' && voiceDetected.value) {
+    showRecordAgainAlert.value = true
+    return
+  }
+  doRecordAgain()
+}
+
+const doRecordAgain = () => {
   if (playbackAudio) { playbackAudio.pause(); playbackAudio = null }
   clearInterval(playbackInterval)
   isPlayingRecording.value = false
@@ -791,6 +855,9 @@ const recordAgain = () => {
   voiceDetected.value = false
   requestMicAndCheck()
 }
+
+const confirmRecordAgain = () => { showRecordAgainAlert.value = false; doRecordAgain() }
+const cancelRecordAgain  = () => { showRecordAgainAlert.value = false }
 
 // ── Audio validation
 
@@ -909,11 +976,56 @@ const retryAfterNoise          = async () => { showNoiseAlert.value = false; awa
 const dismissNoiseAlert        = ()        => { showNoiseAlert.value = false }
 const retryAfterNoiseDuringRec = async () => { showNoiseDuringRecAlert.value = false; await requestMicAndCheck() }
 const cancelNoiseDuringRec     = ()        => { showNoiseDuringRecAlert.value = false; requestMicAndCheck() }
+const confirmLeave = () => {
+  showLeaveAlert.value = false
+  recordingWasCancelled = true
+  clearInterval(countdownInterval)
+  stopLiveWaveform()
+  audioStream?.getTracks().forEach((t) => t.stop())
+  audioStream = null
+  if (mediaRecorder?.state !== 'inactive') mediaRecorder?.stop()
+  audioChunks = []
+  if (pendingNavNext) { pendingNavNext(); pendingNavNext = null }
+}
+const cancelLeave  = () => {
+  showLeaveAlert.value = false
+  if (recordingStatus.value === 'recording') {
+    countdownInterval = setInterval(() => {
+      countdown.value--
+      if (countdown.value <= 0) { clearInterval(countdownInterval); stopRecording() }
+    }, 1000)
+  }
+  if (pendingNavNext) { pendingNavNext(false); pendingNavNext = null }
+}
 
 // ── Lifecycle
-onMounted(() => requestMicAndCheck())
+const isRecordingActive = () =>
+  recordingStatus.value === 'recording' || recordingStatus.value === 'waiting_voice'
+
+const handleBeforeUnload = (e) => {
+  if (isRecordingActive()) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+
+onBeforeRouteLeave((_to, _from, next) => {
+  if (isRecordingActive()) {
+    pendingNavNext = next
+    clearInterval(countdownInterval)
+    showLeaveAlert.value = true
+  } else {
+    next()
+  }
+})
+
+onMounted(() => {
+  window.addEventListener('beforeunload', handleBeforeUnload)
+  requestMicAndCheck()
+})
 
 onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
   clearInterval(sampleInterval)
   clearInterval(countdownInterval)
   clearInterval(playbackInterval)
@@ -1382,6 +1494,9 @@ onUnmounted(() => {
   font-family: 'Poppins', sans-serif; font-size: 14px; font-weight: 600;
   cursor: pointer; margin-bottom: 10px;
 }
+.modal-btn-red { background: linear-gradient(102deg, #ff7b7b, #e84545); }
+.sample-error-text { font-size: 12px; color: #e53935; text-align: center; margin-top: -8px; margin-bottom: 8px; }
+.modal-leave-icon { width: 56px; height: 56px; object-fit: contain; margin-bottom: 16px; }
 .modal-dismiss {
   background: none; border: none; color: #aaa;
   font-family: 'Poppins', sans-serif; font-size: 13px; cursor: pointer;
