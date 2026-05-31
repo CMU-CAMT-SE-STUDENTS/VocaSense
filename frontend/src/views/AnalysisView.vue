@@ -107,6 +107,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   font-family: 'Poppins', sans-serif;
+  overflow-x: hidden;
 }
 
 .page-topbar {
@@ -148,6 +149,7 @@ onMounted(() => {
   align-items: center;
   padding: 20px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .content-card {
@@ -158,6 +160,9 @@ onMounted(() => {
   border-radius: 24px;
   padding: 36px 32px 32px;
   box-shadow: 0 4px 24px rgba(101, 148, 228, 0.12);
+  width: 100%;
+  max-width: 640px;
+  box-sizing: border-box;
 }
 
 .brain-icon {
@@ -196,11 +201,11 @@ onMounted(() => {
   color: #666;
   text-align: center;
   margin: 0 0 28px;
-  white-space: nowrap;
 }
 
 .steps-list {
-  width: 560px;
+  width: 100%;
+  max-width: 560px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -246,7 +251,7 @@ onMounted(() => {
   font-weight: 500;
   font-family: 'Poppins', sans-serif;
   white-space: nowrap;
-  width: 160px;
+  width: 170px;
   flex-shrink: 0;
 }
 
@@ -275,19 +280,17 @@ onMounted(() => {
   color: #aaa;
   text-align: center;
   padding: 0 16px;
-  white-space: nowrap;
 }
 
 @media (max-width: 600px) {
-  .page-inner { padding: 20px 24px; }
+  .page-inner { padding: 16px; }
   .content-card {
-    background: #fff;
-    border-radius: 24px;
-    padding: 28px 20px 24px;
-    box-shadow: 0 4px 24px rgba(101, 148, 228, 0.12);
+    padding: 24px 16px 20px;
   }
-  .analysis-subtitle { white-space: normal; font-size: 12px; }
-  .step-label { width: 160px; }
-  .disclaimer { white-space: normal; font-size: 11px; }
+  .analysis-title { font-size: 22px; }
+  .analysis-subtitle { font-size: 12px; }
+  .step-card { padding: 10px 12px; gap: 8px; }
+  .step-label { font-size: 12px; width: 148px; }
+  .disclaimer { font-size: 11px; }
 }
 </style>
