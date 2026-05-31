@@ -167,7 +167,7 @@ const handleSubmit = async () => {
           .single()
 
         if (userError || !data) {
-          errors.identifier = 'User not found'
+          errors.identifier = 'Invalid email/username or password'
           return
         }
         loginEmail = data.email

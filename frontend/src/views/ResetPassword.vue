@@ -16,6 +16,7 @@
               class="field-input password-input"
               :class="{ 'input-error': errors.password }"
               placeholder="Enter your new password"
+              @focus="touched = true"
             />
             <button type="button" class="toggle-eye" @click="showPassword = !showPassword">
               <svg v-if="!showPassword" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -29,7 +30,24 @@
             </button>
           </div>
           <span v-if="errors.password" class="error-text">{{ errors.password }}</span>
+          <div v-if="form.password" class="password-requirements">
+            <div class="req-item" :class="{ met: passwordChecks.length }">
+              <span class="req-icon">{{ passwordChecks.length ? '✓' : '○' }}</span>
+              At least 8 characters
+            </div>
+            <div class="req-item" :class="{ met: passwordChecks.uppercase }">
+              <span class="req-icon">{{ passwordChecks.uppercase ? '✓' : '○' }}</span>
+              At least 1 uppercase letter
+            </div>
+            <div class="req-item" :class="{ met: passwordChecks.number }">
+              <span class="req-icon">{{ passwordChecks.number ? '✓' : '○' }}</span>
+              At least 1 number
+            </div>
+          </div>
         </div>
+
+        <span v-if="serverError" class="error-text server-error">{{ serverError }}</span>
+        <span v-if="successMessage" class="success-text">{{ successMessage }}</span>
 
         <button type="submit" class="btn-primary">Confirm</button>
       </form>
@@ -38,15 +56,24 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const showPassword = ref(false)
+const touched = ref(false)
+const serverError = ref('')
+const successMessage = ref('')
 
 const form = reactive({ password: '' })
 const errors = reactive({ password: '' })
+
+const passwordChecks = computed(() => ({
+  length:    form.password.length >= 8,
+  uppercase: /[A-Z]/.test(form.password),
+  number:    /[0-9]/.test(form.password)
+}))
 
 const validate = () => {
   errors.password = ''
@@ -58,22 +85,31 @@ const validate = () => {
     errors.password = 'Password must be at least 8 characters'
     return false
   }
+  if (!/[A-Z]/.test(form.password) || !/[0-9]/.test(form.password)) {
+    errors.password = 'Password must contain uppercase letters and numbers'
+    return false
+  }
   return true
 }
 
+watch(() => form.password, () => {
+  if (touched.value) validate()
+})
+
 const handleSubmit = async () => {
+  touched.value = true
   if (validate()) {
-    console.log('Reset password submitted')
-    // TODO: connect to Supabase auth - updateUser({ password })
-    try{
+    serverError.value = ''
+    try {
       const { data, error } = await supabase.auth.updateUser({ password: form.password })
       if (error) throw error
 
       console.log('Password updated successfully:', data)
-      router.push('/login')
+      successMessage.value = 'Password updated successfully!'
+      setTimeout(() => router.push('/login'), 2000)
     } catch (error) {
       console.error('Error updating password:', error)
-      alert('An error occurred while updating the password. Please try again.')
+      serverError.value = 'The system cannot connect to the database. Please try again later.'
     }
   }
 }
@@ -202,6 +238,49 @@ form {
   font-size: 11px;
   color: #e53935;
   margin-top: 4px;
+}
+
+.password-requirements {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.req-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #aaa;
+  transition: color 0.2s;
+}
+
+.req-item.met {
+  color: #16a34a;
+}
+
+.req-icon {
+  width: 14px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.server-error {
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.success-text {
+  display: block;
+  font-size: 13px;
+  color: #166534;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  text-align: center;
 }
 
 /* ── Button ── */
