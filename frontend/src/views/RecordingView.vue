@@ -108,6 +108,7 @@
           <img src="@/assets/icons/correct.png" alt="Complete" class="complete-check-img" />
           <h1 class="complete-title">Recording Complete!</h1>
           <p class="complete-subtitle">Your voice sample has been captured successfully</p>
+          <p v-if="analysisError" class="sample-error-text">{{ analysisError }}</p>
 
           <div class="complete-audio-card">
             <div class="audio-player complete-player">
@@ -327,6 +328,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import sampleAudioSrc from '@/assets/audio/maonoNormal.mp3'
+import { setPendingVoiceAnalysisInput } from '@/utils/voiceAnalysisStore'
 
 const router = useRouter()
 
@@ -382,6 +384,7 @@ const recordedAudioUrl    = ref(null)
 const recordedAudioBlob   = ref(null)
 const recordedWavBlob     = ref(null)
 const lastVoiceValidation = ref(null)
+const analysisError       = ref('')
 const REASON_MAP = {
   'Audio is too short.': 'Recording is too short. Hold "Ahhhh" for at least 3 seconds.',
   'The voiced part is not continuous enough.': 'Keep the sound continuous. Try not to stop in the middle.',
@@ -851,6 +854,7 @@ const doRecordAgain = () => {
   recordedAudioBlob.value = null
   recordedWavBlob.value = null
   lastVoiceValidation.value = null
+  analysisError.value = ''
   audioChunks = []
   voiceDetected.value = false
   requestMicAndCheck()
@@ -949,12 +953,20 @@ const validateRecordedVoiceSample = async () => {
   }
 }
 
-const analyzeVoice = () => {
-  console.log('[analyze-voice]', {
-    sampleAccepted: voiceDetected.value,
-    validation: lastVoiceValidation.value,
-  })
-  router.push({ name: 'analysis' })
+const analyzeVoice = async () => {
+  if (!voiceDetected.value) return
+
+  analysisError.value = ''
+
+  try {
+    const wavBlob = await getRecordedWavBlob()
+    setPendingVoiceAnalysisInput({
+      wavBlob,
+    })
+    router.push({ name: 'analysis' })
+  } catch (err) {
+    analysisError.value = err?.message || 'Could not analyze voice sample.'
+  }
 }
 
 // ── Noise during recording
