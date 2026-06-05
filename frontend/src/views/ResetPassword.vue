@@ -46,13 +46,32 @@
           </div>
         </div>
 
-        <span v-if="serverError" class="error-text server-error">{{ serverError }}</span>
-        <span v-if="successMessage" class="success-text">{{ successMessage }}</span>
-
-        <button type="submit" class="btn-primary">Confirm</button>
+        <button type="submit" class="btn-primary" :disabled="isSubmitting">
+          {{ retryCount > 0 ? 'Retrying...' : isSubmitting ? 'Updating...' : 'Confirm' }}
+        </button>
       </form>
     </div>
   </div>
+
+  <!-- Toast Notification -->
+  <transition name="toast">
+    <div v-if="toast.show" class="toast" :class="toast.type">
+      <div class="toast-icon">
+        <svg v-if="toast.type === 'success'" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <span class="toast-message">{{ toast.message }}</span>
+      <button class="toast-close" @click="toast.show = false">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </transition>
 </template>
 
 <script setup>
@@ -63,8 +82,19 @@ import { supabase } from '@/utils/supabase'
 const router = useRouter()
 const showPassword = ref(false)
 const touched = ref(false)
-const serverError = ref('')
-const successMessage = ref('')
+const isSubmitting = ref(false)
+const retryCount = ref(0)
+
+const toast = reactive({ show: false, message: '', type: 'success' })
+let toastTimer = null
+
+const showToast = (message, type = 'success', duration = 3000) => {
+  if (toastTimer) clearTimeout(toastTimer)
+  toast.message = message
+  toast.type = type
+  toast.show = true
+  toastTimer = setTimeout(() => { toast.show = false }, duration)
+}
 
 const form = reactive({ password: '' })
 const errors = reactive({ password: '' })
@@ -98,19 +128,33 @@ watch(() => form.password, () => {
 
 const handleSubmit = async () => {
   touched.value = true
-  if (validate()) {
-    serverError.value = ''
-    try {
-      const { data, error } = await supabase.auth.updateUser({ password: form.password })
-      if (error) throw error
+  if (!validate()) return
+  isSubmitting.value = true
 
-      console.log('Password updated successfully:', data)
-      successMessage.value = 'Password updated successfully!'
-      setTimeout(() => router.push('/login'), 2000)
-    } catch (error) {
-      console.error('Error updating password:', error)
-      serverError.value = 'The system cannot connect to the database. Please try again later.'
+  try {
+    retryCount.value = 0
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        retryCount.value = attempt
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
+      try {
+        const { error } = await supabase.auth.updateUser({ password: form.password })
+        if (error) throw error
+
+        showToast('Password updated successfully!')
+        setTimeout(() => router.push('/login'), 2000)
+        return
+      } catch (err) {
+        console.error(`Reset password attempt ${attempt + 1} failed:`, err)
+        if (attempt === 1) {
+          showToast('The system cannot connect to the database. Please try again later.', 'error')
+        }
+      }
     }
+  } finally {
+    isSubmitting.value = false
+    retryCount.value = 0
   }
 }
 </script>
@@ -207,6 +251,11 @@ form {
 }
 
 /* ── Password Toggle ── */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
 .input-wrapper {
   position: relative;
 }
@@ -266,22 +315,6 @@ form {
   font-size: 12px;
 }
 
-.server-error {
-  font-size: 13px;
-  margin-bottom: 8px;
-}
-
-.success-text {
-  display: block;
-  font-size: 13px;
-  color: #166534;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 8px;
-  padding: 10px 14px;
-  margin-bottom: 8px;
-  text-align: center;
-}
 
 /* ── Button ── */
 .btn-primary {
@@ -299,12 +332,60 @@ form {
   transition: opacity 0.2s, transform 0.1s;
 }
 
-.btn-primary:hover {
-  opacity: 0.88;
+.btn-primary:hover:not(:disabled) { opacity: 0.88; }
+.btn-primary:active:not(:disabled) { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.7; cursor: default; }
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  top: 28px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  min-width: 260px;
+  max-width: 360px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 9999;
+  font-family: 'Poppins', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
 }
 
-.btn-primary:active {
-  transform: scale(0.98);
+.toast.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.toast.error   { background: #fff1f2; color: #9f1239; border: 1px solid #fecdd3; }
+
+.toast-icon { flex-shrink: 0; display: flex; align-items: center; }
+.toast-message { flex: 1; line-height: 1.4; }
+
+.toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+  color: inherit;
+}
+
+.toast-close:hover { opacity: 1; }
+
+.toast-enter-active { animation: slideIn 0.1s ease; }
+.toast-leave-active { animation: slideOut 0.1s ease forwards; }
+
+@keyframes slideIn {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes slideOut {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(110%); opacity: 0; }
 }
 
 /* ── Responsive ── */

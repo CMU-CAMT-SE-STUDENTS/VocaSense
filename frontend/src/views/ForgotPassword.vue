@@ -22,10 +22,8 @@
           <span v-if="errors.email" class="error-text">{{ errors.email }}</span>
         </div>
 
-        <span v-if="serverError" class="error-text server-error">{{ serverError }}</span>
-
-        <button type="submit" class="btn-primary" :disabled="submitted">
-          {{ submitted ? 'Email Sent!' : 'Send Reset Link' }}
+        <button type="submit" class="btn-primary" :disabled="submitted || isSubmitting">
+          {{ submitted ? 'Email Sent!' : retryCount > 0 ? 'Retrying...' : isSubmitting ? 'Sending...' : 'Send Reset Link' }}
         </button>
 
         <p class="back-link">
@@ -34,6 +32,26 @@
       </form>
     </div>
   </div>
+
+  <!-- Toast Notification -->
+  <transition name="toast">
+    <div v-if="toast.show" class="toast" :class="toast.type">
+      <div class="toast-icon">
+        <svg v-if="toast.type === 'success'" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <span class="toast-message">{{ toast.message }}</span>
+      <button class="toast-close" @click="toast.show = false">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </transition>
 </template>
 
 <script setup>
@@ -43,7 +61,19 @@ import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const submitted = ref(false)
-const serverError = ref('')
+const isSubmitting = ref(false)
+const retryCount = ref(0)
+
+const toast = reactive({ show: false, message: '', type: 'success' })
+let toastTimer = null
+
+const showToast = (message, type = 'success', duration = 3000) => {
+  if (toastTimer) clearTimeout(toastTimer)
+  toast.message = message
+  toast.type = type
+  toast.show = true
+  toastTimer = setTimeout(() => { toast.show = false }, duration)
+}
 
 const form = reactive({ email: '' })
 const errors = reactive({ email: '' })
@@ -62,30 +92,53 @@ const validate = () => {
 }
 
 const handleSubmit = async () => {
-  if (validate()) {
-    serverError.value = ''
-    try {
-      const { data: existingEmail } = await supabase
-        .from('account')
-        .select('email')
-        .eq('email', form.email)
-        .maybeSingle()
+  if (!validate()) return
+  isSubmitting.value = true
 
-      if (!existingEmail) {
-        errors.email = 'Email not found'
-        return
-      }
+  const attemptSubmit = async () => {
+    const { data: existingEmail, error: checkError } = await supabase
+      .from('account')
+      .select('email')
+      .eq('email', form.email)
+      .maybeSingle()
 
-      const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
-        redirectTo: `${window.location.origin}/reset-password`
-      })
-      if (error) throw error
+    if (checkError) throw checkError
 
-      submitted.value = true
-    } catch (err) {
-      console.error('Forgot password error:', err)
-      serverError.value = 'The system cannot connect to the database. Please try again later.'
+    if (!existingEmail) {
+      errors.email = 'Email not found'
+      return false
     }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
+      redirectTo: `${window.location.origin}/reset-password`
+    })
+    if (error) throw error
+
+    return true
+  }
+
+  try {
+    retryCount.value = 0
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        retryCount.value = attempt
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
+      try {
+        const success = await attemptSubmit()
+        if (!success) return
+        submitted.value = true
+        return
+      } catch (err) {
+        console.error(`Forgot password attempt ${attempt + 1} failed:`, err)
+        if (attempt === 1) {
+          showToast('The system cannot connect to the database. Please try again later.', 'error')
+        }
+      }
+    }
+  } finally {
+    isSubmitting.value = false
+    retryCount.value = 0
   }
 }
 
@@ -253,6 +306,58 @@ form {
 
 .auth-link:hover {
   text-decoration: underline;
+}
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  top: 28px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  min-width: 260px;
+  max-width: 360px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 9999;
+  font-family: 'Poppins', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.toast.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.toast.error   { background: #fff1f2; color: #9f1239; border: 1px solid #fecdd3; }
+
+.toast-icon { flex-shrink: 0; display: flex; align-items: center; }
+.toast-message { flex: 1; line-height: 1.4; }
+
+.toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+  color: inherit;
+}
+
+.toast-close:hover { opacity: 1; }
+
+.toast-enter-active { animation: slideIn 0.3s ease; }
+.toast-leave-active { animation: slideOut 0.25s ease forwards; }
+
+@keyframes slideIn {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes slideOut {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(110%); opacity: 0; }
 }
 
 /* ── Responsive ── */

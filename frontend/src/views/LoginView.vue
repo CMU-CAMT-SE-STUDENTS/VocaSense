@@ -62,7 +62,9 @@
           </p>
 
           <!-- Login Button -->
-          <button type="submit" class="btn-primary">Log In</button>
+          <button type="submit" class="btn-primary" :disabled="isSubmitting">
+            {{ retryCount > 0 ? 'Retrying...' : isSubmitting ? 'Logging In...' : 'Log In' }}
+          </button>
 
           <!-- Divider -->
           <div class="divider">
@@ -112,6 +114,8 @@ import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const showPassword = ref(false)
+const isSubmitting = ref(false)
+const retryCount = ref(0)
 
 const toast = reactive({ show: false, message: '', type: 'success' })
 let toastTimer = null
@@ -153,45 +157,66 @@ const validate = () => {
 }
 
 const handleSubmit = async () => {
-  if (validate()) {
-    console.log('Login submitted:', form)
-    // TODO: connect to Supabase auth
-    try{
-      let loginEmail = form.identifier
-      if (!loginEmail.includes('@')) {
-        // If it's not an email, assume it's a username and fetch the corresponding email
-        const { data, error: userError } = await supabase
-          .from('account')
-          .select('email')
-          .eq('username', form.identifier)
-          .single()
+  if (!validate()) return
+  isSubmitting.value = true
 
-        if (userError || !data) {
-          errors.identifier = 'Invalid email/username or password'
-          return
-        }
-        loginEmail = data.email
+  const attemptLogin = async () => {
+    let loginEmail = form.identifier
+    if (!loginEmail.includes('@')) {
+      const { data, error: userError } = await supabase
+        .from('account')
+        .select('email')
+        .eq('username', form.identifier)
+        .maybeSingle()
+
+      if (userError) throw userError
+      if (!data) {
+        errors.identifier = 'Invalid email/username or password'
+        return false
       }
-      // Now attempt to sign in with the email and password
-      const {data, error} = await supabase.auth.signInWithPassword({
-        email: loginEmail,
-        password: form.password
-      })
-      if (error) {
-        console.error('Login error:', error)
-        errors.password = 'Invalid email/username or password'
-      } else {
-        console.log('Login successful:', data)
+      loginEmail = data.email
+    }
 
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: loginEmail,
+      password: form.password
+    })
+
+    if (error) {
+      const msg = (error.message || '').toLowerCase()
+      if (msg.includes('fetch') || msg.includes('network') || msg.includes('connect')) {
+        throw error
+      }
+      errors.password = 'Invalid email/username or password'
+      return false
+    }
+
+    return true
+  }
+
+  try {
+    retryCount.value = 0
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        retryCount.value = attempt
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
+      try {
+        const success = await attemptLogin()
+        if (!success) return
         showToast('Logged in successfully!')
         setTimeout(() => router.push('/'), 700)
-
+        return
+      } catch (err) {
+        console.error(`Login attempt ${attempt + 1} failed:`, err)
+        if (attempt === 1) {
+          showToast('The system cannot connect to the database. Please try again later.', 'error')
+        }
       }
     }
-    catch (err) {
-      console.error('Login error:', err)
-      showToast('The system cannot connect to the database. Please try again later.', 'error')
-    }
+  } finally {
+    isSubmitting.value = false
+    retryCount.value = 0
   }
 }
 
