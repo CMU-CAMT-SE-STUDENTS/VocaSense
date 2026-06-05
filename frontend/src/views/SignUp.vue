@@ -109,9 +109,6 @@
             </div>
           </div>
 
-          <!-- Server Error -->
-          <span v-if="serverError" class="error-text server-error">{{ serverError }}</span>
-
           <!-- Submit Button -->
           <button type="submit" class="btn-primary" :disabled="isSubmitting">
             {{ retryCount > 0 ? 'Retrying...' : isSubmitting ? 'Creating Account...' : 'Create Account' }}
@@ -155,7 +152,6 @@ import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const showPassword = ref(false)
-const serverError = ref('')
 const isSubmitting = ref(false)
 const retryCount = ref(0)
 
@@ -249,15 +245,21 @@ const validate = () => {
 
 const handleSubmit = async () => {
   if (!validate()) return
-  serverError.value = ''
   isSubmitting.value = true
 
   const doSignUp = async () => {
-    const { data: existingUsername } = await supabase
+    const { data: existingUsername, error: usernameCheckError } = await supabase
       .from('account')
       .select('username')
       .eq('username', form.username)
       .maybeSingle()
+
+    if (usernameCheckError) {
+      const msg = (usernameCheckError.message || '').toLowerCase()
+      if (msg.includes('fetch') || msg.includes('network') || msg.includes('connect')) {
+        throw usernameCheckError
+      }
+    }
 
     if (existingUsername) {
       errors.username = 'Username already exists'
@@ -308,7 +310,7 @@ const handleSubmit = async () => {
       } catch (err) {
         console.error(`Sign up attempt ${attempt + 1} failed:`, err)
         if (attempt === 1) {
-          serverError.value = 'The system cannot connect to the database. Please try again later.'
+          showToast('The system cannot connect to the database. Please try again later.', 'error')
         }
       }
     }
@@ -503,10 +505,6 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   margin-top: 4px;
 }
 
-.server-error {
-  font-size: 13px;
-  margin-bottom: 8px;
-}
 
 .password-requirements {
   margin-top: 8px;
