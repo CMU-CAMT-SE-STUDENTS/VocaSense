@@ -109,11 +109,10 @@
             </div>
           </div>
 
-          <!-- Server Error -->
-          <span v-if="serverError" class="error-text server-error">{{ serverError }}</span>
-
           <!-- Submit Button -->
-          <button type="submit" class="btn-primary">Create Account</button>
+          <button type="submit" class="btn-primary" :disabled="isSubmitting">
+            {{ retryCount > 0 ? 'Retrying...' : isSubmitting ? 'Creating Account...' : 'Create Account' }}
+          </button>
 
           <!-- Login Link -->
           <p class="switch-auth">
@@ -153,7 +152,8 @@ import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const showPassword = ref(false)
-const serverError = ref('')
+const isSubmitting = ref(false)
+const retryCount = ref(0)
 
 const toast = reactive({ show: false, message: '', type: 'success' })
 let toastTimer = null
@@ -244,51 +244,79 @@ const validate = () => {
 }
 
 const handleSubmit = async () => {
-  if (validate()) {
-    console.log('Form submitted:', form)
-    try {
-      // Check username uniqueness
-      const { data: existingUsername } = await supabase
-        .from('account')
-        .select('username')
-        .eq('username', form.username)
-        .maybeSingle()
+  if (!validate()) return
+  isSubmitting.value = true
 
-      if (existingUsername) {
-        errors.username = 'Username already exists'
-        return
+  const doSignUp = async () => {
+    const { data: existingUsername, error: usernameCheckError } = await supabase
+      .from('account')
+      .select('username')
+      .eq('username', form.username)
+      .maybeSingle()
+
+    if (usernameCheckError) {
+      const msg = (usernameCheckError.message || '').toLowerCase()
+      if (msg.includes('fetch') || msg.includes('network') || msg.includes('connect')) {
+        throw usernameCheckError
       }
+    }
 
-      // Sign up to supabase
-      const { data, error } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-        options: {
-          data: {
-            first_name: form.firstName,
-            last_name: form.lastName,
-            username: form.username
-          }
-        }
-      })
+    if (existingUsername) {
+      errors.username = 'Username already exists'
+      return false
+    }
 
-      if (error) {
-        console.error('Supabase sign up error:', error)
-        const msg = error.message.toLowerCase()
-        if (msg.includes('already registered') || msg.includes('already exists') || msg.includes('email')) {
-          errors.email = 'Email already exists'
-        } else {
-          showToast('Error signing up: ' + error.message, 'error')
+    const { data, error } = await supabase.auth.signUp({
+      email: form.email,
+      password: form.password,
+      options: {
+        data: {
+          first_name: form.firstName,
+          last_name: form.lastName,
+          username: form.username
         }
+      }
+    })
+
+    if (error) {
+      const msg = (error.message || '').toLowerCase()
+      if (msg.includes('fetch') || msg.includes('network') || msg.includes('connect')) {
+        throw error
+      }
+      if (msg.includes('already registered') || msg.includes('already exists') || msg.includes('email')) {
+        errors.email = 'Email already exists'
       } else {
-        console.log('Supabase sign up success:', data)
+        showToast('Error signing up: ' + error.message, 'error')
+      }
+      return false
+    }
+
+    return true
+  }
+
+  try {
+    retryCount.value = 0
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        retryCount.value = attempt
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
+      try {
+        const success = await doSignUp()
+        if (!success) return
         showToast('Account created successfully!')
         setTimeout(() => router.push('/login'), 2000)
+        return
+      } catch (err) {
+        console.error(`Sign up attempt ${attempt + 1} failed:`, err)
+        if (attempt === 1) {
+          showToast('The system cannot connect to the database. Please try again later.', 'error')
+        }
       }
-    } catch (error) {
-      console.error('Error signing up:', error)
-      serverError.value = 'The system cannot connect to the database. Please try again later.'
     }
+  } finally {
+    isSubmitting.value = false
+    retryCount.value = 0
   }
 }
 
@@ -477,10 +505,6 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   margin-top: 4px;
 }
 
-.server-error {
-  font-size: 13px;
-  margin-bottom: 8px;
-}
 
 .password-requirements {
   margin-top: 8px;
@@ -560,8 +584,8 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 /* ── Toast ── */
 .toast {
   position: fixed;
-  bottom: 28px;
-  left: 28px;
+  top: 28px;
+  right: 28px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -624,13 +648,13 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 }
 
 @keyframes slideIn {
-  from { transform: translateX(-110%); opacity: 0; }
-  to   { transform: translateX(0);     opacity: 1; }
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
 }
 
 @keyframes slideOut {
-  from { transform: translateX(0);     opacity: 1; }
-  to   { transform: translateX(-110%); opacity: 0; }
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(110%); opacity: 0; }
 }
 
 /* ── Responsive ── */
