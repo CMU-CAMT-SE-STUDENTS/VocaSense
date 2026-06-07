@@ -84,8 +84,20 @@
       <!-- RECORDING COMPLETE -->
       <template v-else-if="recordingStatus === 'completed'">
 
+        <!-- Could not reach the server → Offline vs. Connection Problem -->
+        <div v-if="validationConnectionError" class="main-card">
+          <img src="@/assets/icons/notcomplete.png" alt="Connection problem" class="complete-check-img" />
+          <h1 class="complete-title">{{ validationOffline ? "You're Offline" : 'Connection Problem' }}</h1>
+          <p class="complete-subtitle">
+            {{ validationOffline
+              ? "It looks like you're not connected to the internet. Please check your connection and try again."
+              : "We couldn't reach our server to check your recording. Please try again in a moment." }}
+          </p>
+          <button class="btn-analyze" @click="retryValidation">Retry</button>
+        </div>
+
         <!-- No voice detected → Recording Failed -->
-        <div v-if="!voiceDetected" class="main-card">
+        <div v-else-if="!voiceDetected" class="main-card">
           <img src="@/assets/icons/notcomplete.png" alt="Failed" class="complete-check-img" />
           <h1 class="complete-title">Recording Failed</h1>
 
@@ -419,6 +431,8 @@ let noiseCheckAnalyser = null
 
 // ── Voice detection
 const voiceDetected           = ref(false)
+const validationConnectionError = ref(false)
+const validationOffline          = ref(false)
 const noiseDuringRec          = ref(false)
 const showNoiseDuringRecAlert = ref(false)
 const showLeaveAlert          = ref(false)
@@ -851,6 +865,8 @@ const doRecordAgain = () => {
   recordedAudioBlob.value = null
   recordedWavBlob.value = null
   lastVoiceValidation.value = null
+  validationConnectionError.value = false
+  validationOffline.value = false
   audioChunks = []
   voiceDetected.value = false
   requestMicAndCheck()
@@ -921,32 +937,66 @@ const getRecordedWavBlob = async () => {
   return wavBlob
 }
 
-// Send recorded WAV blob to backend for validation
+// Send recorded WAV blob to backend for validation.
+// Network failures (server unreachable / connection dropped) are retried and
+// surfaced as a connection problem — they must NOT be treated as "accepted",
+// since the recording was never actually checked.
 const validateRecordedVoiceSample = async () => {
+  validationConnectionError.value = false
+  validationOffline.value = false
+
+  let wavBlob
   try {
-    const wavBlob = await getRecordedWavBlob()
-    const formData = new FormData()
-    formData.append('file', wavBlob, 'voice-sample.wav')
-
-    const response = await fetch(`${API_BASE_URL}/api/voice/validate`, {
-      method: 'POST',
-      body: formData,
-    })
-
-    const result = await response.json().catch(() => null)
-    if (!response.ok) {
-      throw new Error(result?.detail || 'Voice validation API failed.')
-    }
-
-    lastVoiceValidation.value = result
-    console.log('[voice-validation]', result)
-    return Boolean(result.accepted)
+    wavBlob = await getRecordedWavBlob()
   } catch (err) {
-    // backend not available yet — fall through so recording flow is not blocked
-    lastVoiceValidation.value = { accepted: true, error: err?.message || 'Could not validate voice sample.' }
-    console.log('[voice-validation-error]', lastVoiceValidation.value)
-    return true
+    lastVoiceValidation.value = { accepted: false, error: err?.message || 'Could not prepare recording for validation.' }
+    return false
   }
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 3000))
+
+    try {
+      const formData = new FormData()
+      formData.append('file', wavBlob, 'voice-sample.wav')
+
+      const response = await fetch(`${API_BASE_URL}/api/voice/validate`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await response.json().catch(() => null)
+      if (!response.ok) {
+        lastVoiceValidation.value = { accepted: false, error: result?.detail || 'Voice validation failed.' }
+        return false
+      }
+
+      lastVoiceValidation.value = result
+      console.log('[voice-validation]', result)
+      return Boolean(result.accepted)
+    } catch (err) {
+      // fetch() throwing means the server could not be reached at all (offline, backend down, CORS, etc.)
+      console.error(`Voice validation attempt ${attempt + 1} failed:`, err)
+      if (attempt === 1) {
+        validationConnectionError.value = true
+        // navigator.onLine: false means the device itself has no connection (truly offline);
+        // true-but-still-failing means the device is online but our server can't be reached —
+        // those need different messaging so we don't blame the user's connection for our outage.
+        validationOffline.value = !navigator.onLine
+        lastVoiceValidation.value = null
+        return false
+      }
+    }
+  }
+  return false
+}
+
+// Re-runs validation against the existing recording (no need to discard and re-record
+// just because the connection dropped).
+const retryValidation = async () => {
+  recordingStatus.value = 'validating_recording'
+  voiceDetected.value = await validateRecordedVoiceSample()
+  recordingStatus.value = 'completed'
 }
 
 const analyzeVoice = () => {
