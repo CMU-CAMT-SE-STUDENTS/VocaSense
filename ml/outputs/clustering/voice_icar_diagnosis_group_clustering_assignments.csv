@@ -1,0 +1,209 @@
+id,diagnosis,diagnosis_group,health_status,cluster
+voice001,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice002,healthy,healthy,healthy,2
+voice003,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice004,hypokinetic dysphonia,hypokinetic,disordered,0
+voice005,hypokinetic dysphonia,hypokinetic,disordered,0
+voice006,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice007,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice008,reflux laryngitis,reflux,disordered,2
+voice009,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice010,hypokinetic dysphonia,hypokinetic,disordered,0
+voice011,reflux laryngitis,reflux,disordered,2
+voice012,reflux laryngitis,reflux,disordered,2
+voice013,reflux laryngitis,reflux,disordered,0
+voice014,reflux laryngitis,reflux,disordered,0
+voice015,reflux laryngitis,reflux,disordered,2
+voice016,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice017,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice018,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice019,healthy,healthy,healthy,0
+voice020,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice021,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice022,hypokinetic dysphonia,hypokinetic,disordered,4
+voice023,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice024,healthy,healthy,healthy,2
+voice025,healthy,healthy,healthy,2
+voice026,hypokinetic dysphonia,hypokinetic,disordered,2
+voice027,reflux laryngitis,reflux,disordered,2
+voice028,reflux laryngitis,reflux,disordered,0
+voice029,reflux laryngitis,reflux,disordered,2
+voice030,reflux laryngitis,reflux,disordered,4
+voice031,reflux laryngitis,reflux,disordered,2
+voice032,healthy,healthy,healthy,2
+voice033,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice034,healthy,healthy,healthy,0
+voice035,reflux laryngitis,reflux,disordered,2
+voice036,hypokinetic dysphonia,hypokinetic,disordered,0
+voice037,reflux laryngitis,reflux,disordered,2
+voice038,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice039,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice040,healthy,healthy,healthy,2
+voice041,reflux laryngitis,reflux,disordered,2
+voice042,reflux laryngitis,reflux,disordered,3
+voice043,hypokinetic dysphonia,hypokinetic,disordered,0
+voice044,reflux laryngitis,reflux,disordered,0
+voice045,healthy,healthy,healthy,0
+voice046,reflux laryngitis,reflux,disordered,0
+voice047,reflux laryngitis,reflux,disordered,2
+voice048,reflux laryngitis,reflux,disordered,2
+voice049,healthy,healthy,healthy,0
+voice050,reflux laryngitis,reflux,disordered,0
+voice051,healthy,healthy,healthy,0
+voice052,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice053,reflux laryngitis,reflux,disordered,0
+voice054,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice055,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice056,hypokinetic dysphonia,hypokinetic,disordered,4
+voice057,reflux laryngitis,reflux,disordered,3
+voice058,hypokinetic dysphonia,hypokinetic,disordered,0
+voice059,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice060,healthy,healthy,healthy,2
+voice061,healthy,healthy,healthy,0
+voice062,reflux laryngitis,reflux,disordered,2
+voice063,reflux laryngitis,reflux,disordered,4
+voice064,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice065,reflux laryngitis,reflux,disordered,2
+voice066,reflux laryngitis,reflux,disordered,0
+voice067,healthy,healthy,healthy,2
+voice068,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice069,reflux laryngitis,reflux,disordered,2
+voice070,healthy,healthy,healthy,0
+voice071,reflux laryngitis,reflux,disordered,0
+voice072,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice073,reflux laryngitis,reflux,disordered,0
+voice074,reflux laryngitis,reflux,disordered,2
+voice075,hypokinetic dysphonia,hypokinetic,disordered,0
+voice076,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice077,hypokinetic dysphonia,hypokinetic,disordered,3
+voice078,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice079,reflux laryngitis,reflux,disordered,2
+voice080,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice081,reflux laryngitis,reflux,disordered,2
+voice082,reflux laryngitis,reflux,disordered,4
+voice083,reflux laryngitis,reflux,disordered,2
+voice084,hypokinetic dysphonia,hypokinetic,disordered,0
+voice085,healthy,healthy,healthy,0
+voice086,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice087,hypokinetic dysphonia,hypokinetic,disordered,4
+voice088,hypokinetic dysphonia,hypokinetic,disordered,3
+voice089,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice090,healthy,healthy,healthy,0
+voice091,healthy,healthy,healthy,2
+voice092,healthy,healthy,healthy,2
+voice093,hypokinetic dysphonia,hypokinetic,disordered,0
+voice094,hypokinetic dysphonia,hypokinetic,disordered,3
+voice095,healthy,healthy,healthy,2
+voice096,healthy,healthy,healthy,4
+voice097,healthy,healthy,healthy,0
+voice098,healthy,healthy,healthy,0
+voice099,healthy,healthy,healthy,2
+voice100,healthy,healthy,healthy,2
+voice101,healthy,healthy,healthy,3
+voice102,healthy,healthy,healthy,0
+voice103,healthy,healthy,healthy,2
+voice104,healthy,healthy,healthy,2
+voice105,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice106,hypokinetic dysphonia,hypokinetic,disordered,2
+voice107,healthy,healthy,healthy,3
+voice108,healthy,healthy,healthy,2
+voice109,healthy,healthy,healthy,4
+voice110,healthy,healthy,healthy,3
+voice111,healthy,healthy,healthy,2
+voice112,hypokinetic dysphonia,hypokinetic,disordered,3
+voice113,hyperkinetic dysphonia,hyperkinetic,disordered,1
+voice114,healthy,healthy,healthy,2
+voice115,healthy,healthy,healthy,4
+voice116,hypokinetic dysphonia,hypokinetic,disordered,1
+voice117,hyperkinetic dysphonia,hyperkinetic,disordered,1
+voice118,hypokinetic dysphonia,hypokinetic,disordered,2
+voice119,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice120,healthy,healthy,healthy,4
+voice121,hypokinetic dysphonia,hypokinetic,disordered,0
+voice122,hypokinetic dysphonia,hypokinetic,disordered,4
+voice123,healthy,healthy,healthy,0
+voice124,hypokinetic dysphonia,hypokinetic,disordered,1
+voice125,healthy,healthy,healthy,0
+voice126,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice127,reflux laryngitis,reflux,disordered,3
+voice128,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice129,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice130,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice131,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice132,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice133,reflux laryngitis,reflux,disordered,3
+voice134,healthy,healthy,healthy,4
+voice135,hypokinetic dysphonia,hypokinetic,disordered,0
+voice136,hypokinetic dysphonia,hypokinetic,disordered,3
+voice137,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice138,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice139,healthy,healthy,healthy,4
+voice140,hypokinetic dysphonia,hypokinetic,disordered,3
+voice141,hypokinetic dysphonia,hypokinetic,disordered,1
+voice142,hypokinetic dysphonia,hypokinetic,disordered,3
+voice143,hyperkineti dysphonia,other,disordered,0
+voice144,hypokinetic dysphonia,hypokinetic,disordered,4
+voice145,hyperkinetic dysphonia,hyperkinetic,disordered,1
+voice146,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice147,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice148,hypokinetic dysphonia,hypokinetic,disordered,3
+voice149,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice150,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice151,reflux laryngitis,reflux,disordered,0
+voice152,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice153,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice154,reflux laryngitis,reflux,disordered,2
+voice155,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice156,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice157,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice158,healthy,healthy,healthy,0
+voice159,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice160,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice161,hypokinetic dysphonia,hypokinetic,disordered,3
+voice162,hypokinetic dysphonia,hypokinetic,disordered,1
+voice163,hyperkinetic dysphonia,hyperkinetic,disordered,1
+voice164,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice165,hypokinetic dysphonia,hypokinetic,disordered,1
+voice166,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice167,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice168,hypokinetic dysphonia,hypokinetic,disordered,4
+voice169,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice170,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice171,hypokinetic dysphonia,hypokinetic,disordered,3
+voice172,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice173,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice174,hypokinetic dysphonia,hypokinetic,disordered,1
+voice175,hypokinetic dysphonia,hypokinetic,disordered,2
+voice176,healthy,healthy,healthy,2
+voice177,healthy,healthy,healthy,0
+voice178,healthy,healthy,healthy,0
+voice179,healthy,healthy,healthy,0
+voice180,healthy,healthy,healthy,2
+voice181,healthy,healthy,healthy,4
+voice182,healthy,healthy,healthy,4
+voice183,healthy,healthy,healthy,0
+voice184,healthy,healthy,healthy,0
+voice185,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice186,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice187,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice188,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice189,hypokinetic dysphonia,hypokinetic,disordered,3
+voice190,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice191,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice192,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice193,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice194,hyperkinetic dysphonia,hyperkinetic,disordered,0
+voice195,healthy,healthy,healthy,0
+voice196,healthy,healthy,healthy,4
+voice197,healthy,healthy,healthy,0
+voice198,hyperkinetic dysphonia,hyperkinetic,disordered,3
+voice199,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice200,hyperkinetic dysphonia,hyperkinetic,disordered,2
+voice201,hypokinetic dysphonia,hypokinetic,disordered,1
+voice202,hypokinetic dysphonia,hypokinetic,disordered,4
+voice203,healthy,healthy,healthy,0
+voice204,healthy,healthy,healthy,4
+voice205,hyperkinetic dysphonia,hyperkinetic,disordered,4
+voice206,healthy,healthy,healthy,4
+voice207,healthy,healthy,healthy,2
+voice208,hyperkinetic dysphonia,hyperkinetic,disordered,4
