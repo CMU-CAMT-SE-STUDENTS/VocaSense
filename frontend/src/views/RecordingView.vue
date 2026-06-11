@@ -93,7 +93,15 @@
               ? "It looks like you're not connected to the internet. Please check your connection and try again."
               : "We couldn't reach our server to check your recording. Please try again in a moment." }}
           </p>
-          <button class="btn-analyze" @click="retryValidation">Retry</button>
+          <button class="btn-analyze" @click="retryValidation">Retry Connection</button>
+        </div>
+
+        <!-- Recording could not be prepared for validation (technical issue, not a voice-quality issue) -->
+        <div v-else-if="preparationFailed" class="main-card">
+          <img src="@/assets/icons/notcomplete.png" alt="Processing failed" class="complete-check-img" />
+          <h1 class="complete-title">Couldn't Process Recording</h1>
+          <p class="complete-subtitle">We couldn't process your recording due to a technical issue. Please try recording again.</p>
+          <button class="btn-analyze" @click="recordAgain">Try Again</button>
         </div>
 
         <!-- No voice detected → Recording Failed -->
@@ -433,6 +441,7 @@ let noiseCheckAnalyser = null
 const voiceDetected           = ref(false)
 const validationConnectionError = ref(false)
 const validationOffline          = ref(false)
+const preparationFailed          = ref(false)
 const noiseDuringRec          = ref(false)
 const showNoiseDuringRecAlert = ref(false)
 const showLeaveAlert          = ref(false)
@@ -867,6 +876,7 @@ const doRecordAgain = () => {
   lastVoiceValidation.value = null
   validationConnectionError.value = false
   validationOffline.value = false
+  preparationFailed.value = false
   audioChunks = []
   voiceDetected.value = false
   requestMicAndCheck()
@@ -944,11 +954,16 @@ const getRecordedWavBlob = async () => {
 const validateRecordedVoiceSample = async () => {
   validationConnectionError.value = false
   validationOffline.value = false
+  preparationFailed.value = false
 
   let wavBlob
   try {
     wavBlob = await getRecordedWavBlob()
   } catch (err) {
+    // A technical failure preparing the audio (e.g. decode error) is not the
+    // same as the voice being unclear — show a distinct message so we don't
+    // send the user chasing a "speak louder" fix for a system-side problem.
+    preparationFailed.value = true
     lastVoiceValidation.value = { accepted: false, error: err?.message || 'Could not prepare recording for validation.' }
     return false
   }
