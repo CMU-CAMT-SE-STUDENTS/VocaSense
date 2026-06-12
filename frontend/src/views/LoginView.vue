@@ -74,7 +74,7 @@
           </div>
 
           <!-- Continue without Login -->
-          <button type="button" class="btn-outline">Continue without Login</button>
+          <button type="button" class="btn-outline" @click="continueWithoutLogin">Continue without Login</button>
 
           <!-- Sign Up Link -->
           <p class="switch-auth">
@@ -226,6 +226,10 @@ const goToSignUp = () => {
 
 const goToForgotPassword = () => {
   router.push('/forgot-password')
+}
+
+const continueWithoutLogin = () => {
+  router.push('/')
 }
 </script>
 
