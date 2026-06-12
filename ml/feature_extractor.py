@@ -8,12 +8,16 @@ import librosa
 import numpy as np
 import parselmouth
 from parselmouth.praat import call
+import antropy as ant
+from scipy import signal
+from scipy.signal import resample
 
+import time
 
 EPSILON = 1e-10
 N_MFCC = 13
 
-
+start_time = time.perf_counter()
 def _safe_float(value: float | int | np.floating | None) -> float:
     if value is None:
         return 0.0
@@ -96,7 +100,8 @@ def _extract_voice_quality_features(sound: parselmouth.Sound) -> OrderedDict[str
         )
     except Exception:
         features["cpps_db"] = 0.0
-
+    # quality_time = time.perf_counter()
+    # print("extract voice quality: {quality_time:.2f} seconds".format(quality_time=quality_time - start_time))
     return features
 
 
@@ -136,6 +141,8 @@ def _estimate_cpps(y: np.ndarray, sr: int) -> float:
         trend_at_peak = slope * peak_offset + intercept
         cpps_values.append(float(cepstrum[peak_index] - trend_at_peak))
 
+    # cpps_time = time.perf_counter()
+    # print("estimate CPPS: {cpps_time:.2f} seconds".format(cpps_time=cpps_time - start_time))
     return _safe_mean(cpps_values)
 
 
@@ -159,6 +166,8 @@ def _extract_f0_features(y: np.ndarray, sr: int) -> OrderedDict[str, float]:
     features["f0_max_hz"] = _safe_float(np.max(voiced_f0)) if voiced_f0.size else 0.0
     features["f0_voiced_ratio"] = _safe_float(voiced_f0.size / max(1, len(f0))) if "f0" in locals() else 0.0
 
+    # f0_time = time.perf_counter()
+    # print("extract F0 features: {f0_time:.2f} seconds".format(f0_time=f0_time - start_time))
     return features
 
 
@@ -194,6 +203,8 @@ def _extract_spectral_features(y: np.ndarray, sr: int) -> OrderedDict[str, float
     features["spectral_centroid_mean_hz"] = _safe_mean(centroid)
     features["spectral_centroid_std_hz"] = _safe_std(centroid)
 
+    # spectral_time = time.perf_counter()
+    # print("extract spectral features: {spectral_time:.2f} seconds".format(spectral_time=spectral_time - start_time))
     return features
 
 
@@ -209,8 +220,37 @@ def _extract_mfcc_features(y: np.ndarray, sr: int) -> OrderedDict[str, float]:
     for index, value in enumerate(mfcc_stds, start=1):
         features[f"mfcc_{index}_std"] = _safe_float(value)
 
+    # mfcc_time = time.perf_counter()
+    # print("extract MFCC features: {mfcc_time:.2f} seconds".format(mfcc_time=mfcc_time - start_time))
     return features
 
+def _extract_sample_entropy_features(y: np.ndarray, sr: int) -> OrderedDict[str, float]:
+    features: OrderedDict[str, float] = OrderedDict()
+
+    y_small = resample(y, 4000)
+    try:
+        features["sample_entropy"] = float(
+            ant.sample_entropy(y_small)
+        )
+    except Exception:
+        features["sample_entropy"] = 0.0
+
+    # sample_entropy_time = time.perf_counter()
+    # print("extract sample entropy features: {sample_entropy_time:.2f} seconds".format(sample_entropy_time=sample_entropy_time - start_time))
+    return features
+
+def _extract_spectral_entropy_features(y: np.ndarray, sr: int) -> OrderedDict[str, float]:
+    features: OrderedDict[str, float] = OrderedDict()
+    try:
+        features["spectral_entropy"] = float(
+            ant.spectral_entropy(y, sr)
+        )
+    except Exception:
+        features["spectral_entropy"] = 0.0
+
+    # spectral_entropy_time = time.perf_counter()
+    # print("extract spectral entropy features: {spectral_entropy_time:.2f} seconds".format(spectral_entropy_time=spectral_entropy_time - start_time))
+    return features
 
 def extract_feature_dict(file_path: str | Path) -> OrderedDict[str, float]:
     """
@@ -238,7 +278,8 @@ def extract_feature_dict(file_path: str | Path) -> OrderedDict[str, float]:
     features.update(_extract_f0_features(y, sr))
     features.update(_extract_spectral_features(y, sr))
     features.update(_extract_mfcc_features(y, sr))
-
+    features.update(_extract_sample_entropy_features(y, sr))
+    features.update(_extract_spectral_entropy_features(y, sr))
     return features
 
 
@@ -262,6 +303,8 @@ def get_feature_names() -> list[str]:
         "shimmer_local",
         "hnr_db",
         "cpps_db",
+        "sample_entropy",
+        "spectral_entropy",
         "f0_mean_hz",
         "f0_std_hz",
         "f0_min_hz",
@@ -277,3 +320,10 @@ def get_feature_names() -> list[str]:
     mfcc_mean_names = [f"mfcc_{index}_mean" for index in range(1, N_MFCC + 1)]
     mfcc_std_names = [f"mfcc_{index}_std" for index in range(1, N_MFCC + 1)]
     return dummy_names + mfcc_mean_names + mfcc_std_names
+
+# print("Starting feature extraction test...")
+# file_path = Path(r"D:\Work\VocaSense\ml\dataset\ไฟล์เสียง\cold\cold1.mp3")
+# features = extract_features(file_path, as_dict=True)
+# print(features)
+# end_time = time.perf_counter()
+# print(f"Feature extraction time: {end_time - start_time:.2f} seconds")

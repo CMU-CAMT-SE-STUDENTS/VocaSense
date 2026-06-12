@@ -31,7 +31,7 @@ from feature_extractor import extract_feature_dict, get_feature_names
 ROOT = Path(__file__).resolve().parent
 DATASET_DIR = ROOT / "dataset"
 OUTPUT_DIR = ROOT / "outputs" / "clustering"
-AUDIO_DIR = DATASET_DIR / "\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07"
+AUDIO_DIR = AUDIO_DIR = ROOT / "dataset" / "acoustic"
 AUDIO_CACHE = OUTPUT_DIR / "unlabeled_audio_features.csv"
 VOICE_ICAR_DIR = DATASET_DIR / "voice-icar-federico-ii-database-1.0.0"
 VOICE_ICAR_CACHE = OUTPUT_DIR / "voice_icar_features.csv"
@@ -129,7 +129,9 @@ class ExperimentResult:
     ari: float | None
     nmi: float | None
     cluster_purity: float | None
-
+    original_features: int
+    pca_features: int
+    pca_explained_variance: float
 
 def _safe_float(value: str | float | int) -> float:
     try:
@@ -199,10 +201,14 @@ def _determine_clusters(y: np.ndarray | None) -> int:
 
 def _reduce_dimensions(
     x_scaled: np.ndarray,
-    max_components: int = 30,
-) -> np.ndarray:
+    max_components: int = 20,
+) -> tuple[np.ndarray, dict]:
     if x_scaled.shape[1] <= max_components:
-        return x_scaled
+        return x_scaled, {
+            "original_features": x_scaled.shape[1],
+            "pca_features": x_scaled.shape[1],
+            "pca_explained_variance": 1.0,
+        }
     pca = PCA(
         n_components=min(
             max_components,
@@ -212,13 +218,20 @@ def _reduce_dimensions(
         random_state=RANDOM_STATE,
     )
     reduced = pca.fit_transform(x_scaled)
+    metadata = {
+        "original_features": x_scaled.shape[1],
+        "pca_features": reduced.shape[1],
+        "pca_explained_variance": float(
+            pca.explained_variance_ratio_.sum()
+        ),
+    }
     print(
         f"PCA: {x_scaled.shape[1]} -> "
         f"{reduced.shape[1]} features "
         f"(explained variance "
         f"{pca.explained_variance_ratio_.sum():.3f})"
     )
-    return reduced
+    return reduced, metadata
 
 def _evaluate(
     experiment: str,
@@ -227,7 +240,7 @@ def _evaluate(
     y: np.ndarray | None,
 ) -> tuple[ExperimentResult, np.ndarray, np.ndarray]:
     x_scaled = _standardize(x)
-    x_cluster = _reduce_dimensions(x_scaled)
+    x_cluster, pca_info = _reduce_dimensions(x_scaled)
     n_clusters = _determine_clusters(y)
     clusters = _kmeans(
         x_cluster,
@@ -255,6 +268,9 @@ def _evaluate(
             feature_set=feature_set,
             n_samples=x.shape[0],
             n_features=x.shape[1],
+            original_features=pca_info["original_features"],
+            pca_features=pca_info["pca_features"],
+            pca_explained_variance=pca_info["pca_explained_variance"],
             silhouette=silhouette,
             ari=ari,
             nmi=nmi,
@@ -322,12 +338,31 @@ def _save_projection(
     plt.close()
 
 
-def _write_rows(path: Path, rows: Iterable[dict[str, object]]) -> None:
+def _write_rows(
+    path: Path,
+    rows: Iterable[dict[str, object]]
+) -> None:
     rows = list(rows)
     if not rows:
         return
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+    fieldnames = []
+    
+    for row in rows:
+        for key in row.keys():
+            if key not in fieldnames:
+                fieldnames.append(key)
+
+    with path.open(
+        "w",
+        encoding="utf-8",
+        newline=""
+    ) as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=fieldnames,
+            extrasaction="ignore",
+        )
+
         writer.writeheader()
         writer.writerows(rows)
 
@@ -376,13 +411,65 @@ def load_pd_speech() -> LabeledDataset:
 
 def _iter_audio_files() -> list[Path]:
     extensions = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
+    print(AUDIO_DIR)
+    print(AUDIO_DIR.exists())
     return sorted(path for path in AUDIO_DIR.rglob("*") if path.suffix.lower() in extensions)
 
+# label for self audio
 
+def _build_label_map(root: Path) -> dict[str, str]:
+    mapping = {}
+
+    for label_dir in root.iterdir():
+        if not label_dir.is_dir():
+            continue
+
+        label = label_dir.name
+
+        for file in label_dir.rglob("*"):
+            if file.is_file():
+                mapping[file.stem.lower()] = label
+
+    return mapping
+
+HEALTH_MAP = _build_label_map(
+    ROOT / "dataset" / "health"
+)
+
+DEVICE_MAP = _build_label_map(
+    ROOT / "dataset" / "device"
+)
+
+ACOUSTIC_MAP = _build_label_map(
+    ROOT / "dataset" / "acoustic"
+)
+
+def _get_acoustic_label(path: Path) -> str:
+    return ACOUSTIC_MAP.get(
+        path.stem.lower(),
+        "unknown",
+    )
+
+def _get_health_label(path: Path) -> str:
+    return HEALTH_MAP.get(
+        path.stem.lower(),
+        "unknown",
+    )
+
+def _get_device_label(path: Path) -> str:
+   return DEVICE_MAP.get(
+        path.stem.lower(),
+        "unknown",
+    )
+   
 def extract_unlabeled_audio(limit: int | None = None, refresh_cache: bool = False) -> list[dict[str, str]]:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     feature_names = get_feature_names()
     audio_files = _iter_audio_files()
+    print(
+    "found audio files:",
+    len(audio_files)
+    )
     if limit is not None:
         audio_files = audio_files[:limit]
 
@@ -397,10 +484,16 @@ def extract_unlabeled_audio(limit: int | None = None, refresh_cache: bool = Fals
     for index, audio_path in enumerate(audio_files, start=1):
         print(f"[audio] extracting {index}/{len(audio_files)} {audio_path.relative_to(ROOT)}")
         features = extract_feature_dict(audio_path)
+        acoustic_label = _get_acoustic_label(audio_path)
+        health_label = _get_health_label(audio_path)
+        device_label = _get_device_label(audio_path)
+
         row = {
             "id": audio_path.stem,
             "path": str(audio_path.relative_to(ROOT)),
-            "folder_hint": audio_path.parent.name,
+            "acoustic_label": acoustic_label,
+            "health_label": health_label,
+            "device_label": device_label,
         }
         row.update({name: str(features.get(name, "")) for name in feature_names})
         rows.append(row)
@@ -418,7 +511,7 @@ def _feature_rows_to_dataset(
     x, names = _drop_bad_columns(_numeric_matrix(rows, feature_names), feature_names)
     ids = [row["id"] for row in rows]
     if label_column is None:
-        y = np.asarray([row.get("folder_hint", "unlabeled") for row in rows], dtype=object)
+        y = np.asarray([row.get("acoustic_label", "unlabeled") for row in rows], dtype=object)
     else:
         y = np.asarray([row[label_column] for row in rows], dtype=object)
     return LabeledDataset(name, ids, names, x, y, [name] * len(ids))
@@ -428,18 +521,45 @@ def run_audio_folder_clustering(
     audio_records: list[dict[str, str]],
     results: list[ExperimentResult],
 ) -> None:
+    print(f"audio_records = {len(audio_records)}")
     if len(audio_records) < 3:
         print("[skip] audio_folder_self_clustering: fewer than three audio records")
         return
+    
+    label_columns = [
+    "acoustic_label",
+    "health_label",
+    "device_label",
+    ]
 
-    dataset = _feature_rows_to_dataset("audio_folder_self_clustering", audio_records)
-    result, x_scaled, clusters = _evaluate(
-        dataset.name,
-        "extracted_audio_features",
-        dataset.x,
-        dataset.y,
-    )
-    results.append(result)
+    for label_column in label_columns:
+
+        dataset = _feature_rows_to_dataset(
+            f"audio_folder_{label_column}_clustering",
+            audio_records,
+            label_column=label_column,
+        )
+
+        feature_sets = build_feature_sets(dataset)
+
+        for feature_set_name, feature_names in feature_sets.items():
+
+            indices = [
+                dataset.feature_names.index(f)
+                for f in feature_names
+            ]
+
+            x_subset = dataset.x[:, indices]
+
+            result, x_scaled, clusters = _evaluate(
+                dataset.name,
+                feature_set_name,
+                x_subset,
+                dataset.y,
+            )
+
+            results.append(result)
+        
     _save_projection(
         OUTPUT_DIR / "audio_folder_self_clustering.png",
         "Unlabeled audio folder clustering",
@@ -454,7 +574,9 @@ def run_audio_folder_clustering(
             {
                 "id": record["id"],
                 "path": record["path"],
-                "folder_hint": record["folder_hint"],
+                "acoustic_label": record["acoustic_label"],
+                "health_label": record["health_label"],
+                "device_label": record["device_label"],
                 "cluster": int(cluster),
             }
             for record, cluster in zip(audio_records, clusters)
@@ -574,19 +696,32 @@ def run_voice_icar_clustering(
         print("[skip] voice_icar_self_clustering: fewer than three records")
         return
 
-    for label_column in ["health_status", "diagnosis_group"]:
+    for label_column in ["health_status"]:
         dataset = _feature_rows_to_dataset(
             f"voice_icar_{label_column}_clustering",
             voice_icar_records,
             label_column=label_column,
         )
-        result, x_scaled, clusters = _evaluate(
-            dataset.name,
-            "converted_dat_hea_audio_features",
-            dataset.x,
-            dataset.y,
-        )
-        results.append(result)
+        feature_sets = build_feature_sets(dataset)
+
+        for feature_set_name, feature_names in feature_sets.items():
+
+            indices = [
+                dataset.feature_names.index(f)
+                for f in feature_names
+            ]
+
+            x_subset = dataset.x[:, indices]
+
+            result, x_scaled, clusters = _evaluate(
+                dataset.name,
+                feature_set_name,
+                x_subset,
+                dataset.y,
+            )
+
+            results.append(result)
+            
         _save_projection(
             OUTPUT_DIR / f"{dataset.name}.png",
             f"Voice ICAR clustering by {label_column}",
@@ -696,8 +831,7 @@ def run_audio_overlay(
             {
                 "id": sample_id,
                 "source": "labeled",
-                "folder_hint": "",
-                "true_class": int(label),
+                "true_class": label,
                 "cluster": int(cluster),
             }
         )
@@ -706,8 +840,9 @@ def run_audio_overlay(
             {
                 "id": record["id"],
                 "source": "unlabeled_audio",
-                "folder_hint": record["folder_hint"],
-                "true_class": "",
+                "acoustic_label": record["acoustic_label"],
+                "health_label": record["health_label"],
+                "device_label": record["device_label"],
                 "cluster": int(cluster),
             }
         )
@@ -720,17 +855,11 @@ def run_audio_overlay(
 
 def build_feature_sets(dataset: LabeledDataset) -> dict[str, list[str]]:
     all_features = dataset.feature_names
-
-    without_rpde_ppe = [
-        name
-        for name in all_features
-        if name.upper() not in {"RPDE", "PPE"}
-    ]
-
-    rpde_ppe = [
-        name
-        for name in all_features
-        if name.upper() in {"RPDE", "PPE"}
+    
+    without_entropy = [
+        f
+        for f in all_features
+        if f.lower() not in {"sample_entropy", "spectral_entropy"}
     ]
     
     cepstral_features = [
@@ -755,19 +884,14 @@ def build_feature_sets(dataset: LabeledDataset) -> dict[str, list[str]]:
     nonlinear_features = [
         f
         for f in all_features
-            if f.upper() in {"RPDE", "PPE"}
+            if f.lower() in {"sample_entropy", "spectral_entropy"}
     ]
 
     sets = {
         "all_features": all_features,
+        "without_entropy": without_entropy,
     }
     
-
-    if len(without_rpde_ppe) != len(all_features):
-        sets["without_rpde_ppe"] = without_rpde_ppe
-
-    if len(rpde_ppe) == 2:
-        sets["rpde_ppe_only"] = rpde_ppe
         
     if cepstral_features and noise_features:
         sets["cepstral_noise"] = (
@@ -812,11 +936,12 @@ def build_feature_sets(dataset: LabeledDataset) -> dict[str, list[str]]:
         ],
 
         "nonlinear": [
-            "RPDE",
-            "PPE",
+            "sample_entropy",
+            "spectral_entropy",
         ],
     }
 
+    
     for group_name, candidates in feature_map.items():
 
         matched = [
@@ -891,6 +1016,9 @@ def main() -> None:
                 "feature_set": result.feature_set,
                 "n_samples": result.n_samples,
                 "n_features": result.n_features,
+                "original_features": result.original_features,
+                "pca_features": result.pca_features,
+                "pca_explained_variance": f"{result.pca_explained_variance:.6f}",
                 "silhouette": "" if result.silhouette is None else f"{result.silhouette:.6f}",
                 "ari": "" if result.ari is None else f"{result.ari:.6f}",
                 "nmi": "" if result.nmi is None else f"{result.nmi:.6f}",
