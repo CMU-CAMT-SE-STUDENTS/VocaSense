@@ -254,6 +254,18 @@ const handleSubmit = async () => {
       .eq('email', form.email)
       .maybeSingle()
 
+    const { data: existingUsername, error: usernameCheckError } = await supabase
+      .from('account')
+      .select('username')
+      .eq('username', form.username)
+      .maybeSingle()
+
+    if (existingEmail && existingUsername) {
+      errors.email = 'Email already exists'
+      errors.username = 'Username already exists'
+      return false
+    }
+
     if (emailCheckError) {
       const msg = (emailCheckError.message || '').toLowerCase()
       if (msg.includes('fetch') || msg.includes('network') || msg.includes('connect')) {
@@ -265,12 +277,6 @@ const handleSubmit = async () => {
       errors.email = 'Email already exists'
       return false
     }
-
-    const { data: existingUsername, error: usernameCheckError } = await supabase
-      .from('account')
-      .select('username')
-      .eq('username', form.username)
-      .maybeSingle()
 
     if (usernameCheckError) {
       const msg = (usernameCheckError.message || '').toLowerCase()
