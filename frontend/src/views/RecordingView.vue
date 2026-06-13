@@ -169,7 +169,7 @@
           {{ statusText }}
         </div>
 
-        <h1 class="page-title">Voice Recording Test</h1>
+        <h1 class="page-title">Voice Recording</h1>
         <p class="page-subtitle">
           Say <span class="highlight">"Ahhhh"</span> continuously for 5 seconds when the recording starts
         </p>
