@@ -248,17 +248,13 @@ const handleSubmit = async () => {
   isSubmitting.value = true
 
   const doSignUp = async () => {
-    const { data: existingEmail, error: emailCheckError } = await supabase
-      .from('account')
-      .select('email')
-      .eq('email', form.email)
-      .maybeSingle()
-
-    const { data: existingUsername, error: usernameCheckError } = await supabase
-      .from('account')
-      .select('username')
-      .eq('username', form.username)
-      .maybeSingle()
+    const [
+      { data: existingEmail, error: emailCheckError },
+      { data: existingUsername, error: usernameCheckError }
+    ] = await Promise.all([
+      supabase.from('account').select('email').eq('email', form.email).maybeSingle(),
+      supabase.from('account').select('username').eq('username', form.username).maybeSingle()
+    ])
 
     if (existingEmail && existingUsername) {
       errors.email = 'Email already exists'
@@ -307,11 +303,7 @@ const handleSubmit = async () => {
       if (msg.includes('fetch') || msg.includes('network') || msg.includes('connect')) {
         throw error
       }
-      if (msg.includes('already registered') || msg.includes('already exists') || msg.includes('email')) {
-        errors.email = 'Email already exists'
-      } else {
-        showToast('Error signing up: ' + error.message, 'error')
-      }
+      showToast('Error signing up: ' + error.message, 'error')
       return false
     }
 
