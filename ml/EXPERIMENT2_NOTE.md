@@ -1,4 +1,4 @@
-In this experiment
+experiment round 2
 - Change PCA value
     Result: change pca to 41 from 30, the matric barely change. but reducing to 20 is still work 
 - Add RPDE and PPE to feature_extractor.py

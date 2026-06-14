@@ -23,6 +23,9 @@ from sklearn.metrics import (
     normalized_mutual_info_score,
     silhouette_score,
 )
+from sklearn.ensemble import RandomForestClassifier
+import pandas as pd
+
 from sklearn.preprocessing import StandardScaler
 
 from feature_extractor import extract_feature_dict, get_feature_names
@@ -89,24 +92,24 @@ REPLICATED_TO_AUDIO = {
 }
 
 
-PD_SPEECH_TO_AUDIO = {
-    "locPctJitter": "jitter_local",
-    "locShimmer": "shimmer_local",
-    "meanHarmToNoiseHarmonicity": "hnr_db",
-    "mean_MFCC_0th_coef": "mfcc_1_mean",
-    "mean_MFCC_1st_coef": "mfcc_2_mean",
-    "mean_MFCC_2nd_coef": "mfcc_3_mean",
-    "mean_MFCC_3rd_coef": "mfcc_4_mean",
-    "mean_MFCC_4th_coef": "mfcc_5_mean",
-    "mean_MFCC_5th_coef": "mfcc_6_mean",
-    "mean_MFCC_6th_coef": "mfcc_7_mean",
-    "mean_MFCC_7th_coef": "mfcc_8_mean",
-    "mean_MFCC_8th_coef": "mfcc_9_mean",
-    "mean_MFCC_9th_coef": "mfcc_10_mean",
-    "mean_MFCC_10th_coef": "mfcc_11_mean",
-    "mean_MFCC_11th_coef": "mfcc_12_mean",
-    "mean_MFCC_12th_coef": "mfcc_13_mean",
-}
+# PD_SPEECH_TO_AUDIO = {
+#     "locPctJitter": "jitter_local",
+#     "locShimmer": "shimmer_local",
+#     "meanHarmToNoiseHarmonicity": "hnr_db",
+#     "mean_MFCC_0th_coef": "mfcc_1_mean",
+#     "mean_MFCC_1st_coef": "mfcc_2_mean",
+#     "mean_MFCC_2nd_coef": "mfcc_3_mean",
+#     "mean_MFCC_3rd_coef": "mfcc_4_mean",
+#     "mean_MFCC_4th_coef": "mfcc_5_mean",
+#     "mean_MFCC_5th_coef": "mfcc_6_mean",
+#     "mean_MFCC_6th_coef": "mfcc_7_mean",
+#     "mean_MFCC_7th_coef": "mfcc_8_mean",
+#     "mean_MFCC_8th_coef": "mfcc_9_mean",
+#     "mean_MFCC_9th_coef": "mfcc_10_mean",
+#     "mean_MFCC_10th_coef": "mfcc_11_mean",
+#     "mean_MFCC_11th_coef": "mfcc_12_mean",
+#     "mean_MFCC_12th_coef": "mfcc_13_mean",
+# }
 
 
 @dataclass
@@ -225,12 +228,12 @@ def _reduce_dimensions(
             pca.explained_variance_ratio_.sum()
         ),
     }
-    print(
-        f"PCA: {x_scaled.shape[1]} -> "
-        f"{reduced.shape[1]} features "
-        f"(explained variance "
-        f"{pca.explained_variance_ratio_.sum():.3f})"
-    )
+    # print(
+    #     f"PCA: {x_scaled.shape[1]} -> "
+    #     f"{reduced.shape[1]} features "
+    #     f"(explained variance "
+    #     f"{pca.explained_variance_ratio_.sum():.3f})"
+    # )
     return reduced, metadata
 
 def _evaluate(
@@ -399,14 +402,14 @@ def load_replicated() -> LabeledDataset:
     return LabeledDataset("replicated_acoustic", ids, names, x, y, ["replicated"] * len(ids))
 
 
-def load_pd_speech() -> LabeledDataset:
-    _, records = _read_csv_rows(DATASET_DIR / "pd_speech_features.csv", header_row=1)
-    excluded = {"id", "class"}
-    feature_names = [name for name in records[0] if name not in excluded]
-    x, names = _drop_bad_columns(_numeric_matrix(records, feature_names), feature_names)
-    ids = [record["id"] for record in records]
-    y = np.asarray([int(_safe_float(record["class"])) for record in records])
-    return LabeledDataset("pd_speech_features", ids, names, x, y, ["pd_speech"] * len(ids))
+# def load_pd_speech() -> LabeledDataset:
+#     _, records = _read_csv_rows(DATASET_DIR / "pd_speech_features.csv", header_row=1)
+#     excluded = {"id", "class"}
+#     feature_names = [name for name in records[0] if name not in excluded]
+#     x, names = _drop_bad_columns(_numeric_matrix(records, feature_names), feature_names)
+#     ids = [record["id"] for record in records]
+#     y = np.asarray([int(_safe_float(record["class"])) for record in records])
+#     return LabeledDataset("pd_speech_features", ids, names, x, y, ["pd_speech"] * len(ids))
 
 
 def _iter_audio_files() -> list[Path]:
@@ -501,6 +504,33 @@ def extract_unlabeled_audio(limit: int | None = None, refresh_cache: bool = Fals
     _write_rows(AUDIO_CACHE, rows)
     return rows
 
+# see device bias problem
+def _analyze_device_bias(dataset):
+
+    clf = RandomForestClassifier(
+        n_estimators=200,
+        random_state=42,
+    )
+
+    clf.fit(
+        dataset.x,
+        dataset.y,
+    )
+
+    importance_df = pd.DataFrame(
+        {
+            "feature": dataset.feature_names,
+            "importance": clf.feature_importances_,
+        }
+    )
+
+    importance_df = importance_df.sort_values(
+        "importance",
+        ascending=False,
+    )
+
+    print("\nTop device-sensitive features")
+    print(importance_df.head(20))
 
 def _feature_rows_to_dataset(
     name: str,
@@ -539,6 +569,10 @@ def run_audio_folder_clustering(
             audio_records,
             label_column=label_column,
         )
+        
+        if label_column == "device_label":
+            print(f"\nAnalyzing device bias for {dataset.name}")
+            _analyze_device_bias(dataset)
 
         feature_sets = build_feature_sets(dataset)
 
@@ -862,6 +896,40 @@ def build_feature_sets(dataset: LabeledDataset) -> dict[str, list[str]]:
         if f.lower() not in {"sample_entropy", "spectral_entropy"}
     ]
     
+    without_mfcc_mean = [
+        f
+        for f in all_features
+        if f.lower() not in {"mfcc_1_mean", "mfcc_2_mean", "mfcc_3_mean", "mfcc_4_mean", "mfcc_5_mean", "mfcc_6_mean", "mfcc_7_mean", "mfcc_8_mean", "mfcc_9_mean", "mfcc_10_mean", "mfcc_11_mean", "mfcc_12_mean", "mfcc_13_mean"}
+    ]
+    
+    without_cepstral = [
+        f
+        for f in all_features
+        if "mfcc" not in f.lower()
+    ]
+    
+    without_top_device_features = [
+        f
+        for f in all_features
+        if f.lower() not in {"mfcc_6_mean", "mfcc_7_mean", "mfcc_4_mean", "mfcc_7_std","mfcc_5_std","mfcc_2_mean"," mfcc_3_mean","mfcc_10_std","mfcc_13_std","spectral_centroid_std_hz"}
+    ]
+    
+    voice_quality_features = [
+        f
+        for f in all_features
+        if any(
+            keyword in f.lower()
+            for keyword in [
+                "hnr",
+                "cpps",
+                "entropy",
+                "jitter",
+                "shimmer",
+                "f0",
+            ]
+        )
+    ]
+    
     cepstral_features = [
         f
         for f in all_features
@@ -889,7 +957,11 @@ def build_feature_sets(dataset: LabeledDataset) -> dict[str, list[str]]:
 
     sets = {
         "all_features": all_features,
-        "without_entropy": without_entropy,
+        # "without_entropy": without_entropy,
+        "without_cepstral": without_cepstral,
+        "without_mfcc_mean": without_mfcc_mean,
+        "without_top_device_features": without_top_device_features,
+        "voice_quality_only": voice_quality_features,
     }
     
         
@@ -987,7 +1059,9 @@ def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     results: list[ExperimentResult] = []
-    datasets = [load_parkinson_speech(), load_replicated(), load_pd_speech()]
+    datasets = [load_parkinson_speech(), load_replicated()
+                #, load_pd_speech()
+                ]
 
     for dataset in datasets:
         run_labeled_experiment(dataset, build_feature_sets(dataset), results)
@@ -999,7 +1073,7 @@ def main() -> None:
         )
         run_audio_folder_clustering(audio_records, results)
         run_audio_overlay(load_replicated(), REPLICATED_TO_AUDIO, audio_records, results)
-        run_audio_overlay(load_pd_speech(), PD_SPEECH_TO_AUDIO, audio_records, results)
+        # run_audio_overlay(load_pd_speech(), PD_SPEECH_TO_AUDIO, audio_records, results)
 
     if not args.skip_voice_icar:
         voice_icar_records = extract_voice_icar(
