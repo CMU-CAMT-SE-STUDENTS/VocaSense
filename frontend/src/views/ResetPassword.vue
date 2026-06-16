@@ -147,6 +147,10 @@ const handleSubmit = async () => {
         return
       } catch (err) {
         console.error(`Reset password attempt ${attempt + 1} failed:`, err)
+        if (err?.message?.toLowerCase().includes('new password should be different')) {
+          errors.password = 'New password must be different from your current password'
+          return
+        }
         if (attempt === 1) {
           showToast('The system cannot connect to the database. Please try again later.', 'error')
         }
