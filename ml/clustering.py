@@ -465,6 +465,43 @@ def _get_device_label(path: Path) -> str:
         "unknown",
     )
    
+def _save_pca_by_label(
+    output_path,
+    title,
+    x_scaled,
+    labels,
+):
+    pca = PCA(n_components=2, random_state=42)
+
+    x_pca = pca.fit_transform(x_scaled)
+
+    plt.figure(figsize=(8, 6))
+
+    unique_labels = np.unique(labels)
+
+    for label in unique_labels:
+        mask = labels == label
+
+        plt.scatter(
+            x_pca[mask, 0],
+            x_pca[mask, 1],
+            label=str(label),
+            alpha=0.8,
+        )
+
+    plt.title(title)
+    plt.xlabel(
+        f"PC1 ({pca.explained_variance_ratio_[0]:.2%})"
+    )
+    plt.ylabel(
+        f"PC2 ({pca.explained_variance_ratio_[1]:.2%})"
+    )
+
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
+   
 def extract_unlabeled_audio(limit: int | None = None, refresh_cache: bool = False) -> list[dict[str, str]]:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     feature_names = get_feature_names()
@@ -569,6 +606,17 @@ def run_audio_folder_clustering(
             audio_records,
             label_column=label_column,
         )
+        acoustic_labels = np.asarray(
+            [row["acoustic_label"] for row in audio_records]
+        )
+
+        health_labels = np.asarray(
+            [row["health_label"] for row in audio_records]
+        )
+
+        device_labels = np.asarray(
+            [row["device_label"] for row in audio_records]
+        )
         
         if label_column == "device_label":
             print(f"\nAnalyzing device bias for {dataset.name}")
@@ -591,17 +639,34 @@ def run_audio_folder_clustering(
                 x_subset,
                 dataset.y,
             )
+            
+            if feature_set_name in ["all_features", "voice_quality_only","without_mfcc_mean","without_cepstral"]:
+                print(f"Processing feature set: {feature_set_name}")
+
+                _save_pca_by_label(
+                    OUTPUT_DIR / "pca_all_features_acoustic.png",
+                    f"PCA ({feature_set_name}) - Acoustic Labels",
+                    x_scaled,
+                    acoustic_labels,
+                )
+
+                _save_pca_by_label(
+                    OUTPUT_DIR / "pca_all_features_health.png",
+                    f"PCA ({feature_set_name}) - Health Labels",
+                    x_scaled,
+                    health_labels,
+                )
+
+                _save_pca_by_label(
+                    OUTPUT_DIR / "pca_all_features_device.png",
+                    f"PCA ({feature_set_name}) - Device Labels",
+                    x_scaled,
+                    device_labels,
+                )
 
             results.append(result)
         
-    _save_projection(
-        OUTPUT_DIR / "audio_folder_self_clustering.png",
-        "Unlabeled audio folder clustering",
-        x_scaled,
-        clusters,
-        labels=dataset.y,
-        source=["unlabeled_audio"] * len(audio_records),
-    )
+    
     _write_rows(
         OUTPUT_DIR / "audio_folder_self_clustering_assignments.csv",
         (
@@ -753,17 +818,21 @@ def run_voice_icar_clustering(
                 x_subset,
                 dataset.y,
             )
+            
+            if feature_set_name in ["all_features", "voice_quality_only","without_mfcc_mean","without_cepstral"]:
+                print(f"Processing feature set: {feature_set_name}")
+                _save_projection(
+                    OUTPUT_DIR / f"{dataset.name}_{feature_set_name}.png",
+                    f"{dataset.name} - {feature_set_name}",
+                    x_scaled,
+                    clusters,
+                    labels=dataset.y,
+                    source=["voice_icar"] * len(voice_icar_records),
+                )
 
             results.append(result)
             
-        _save_projection(
-            OUTPUT_DIR / f"{dataset.name}.png",
-            f"Voice ICAR clustering by {label_column}",
-            x_scaled,
-            clusters,
-            labels=dataset.y,
-            source=["voice_icar"] * len(voice_icar_records),
-        )
+        
         _write_rows(
             OUTPUT_DIR / f"{dataset.name}_assignments.csv",
             (
