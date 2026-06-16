@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from feature_extractor import extract_feature_dict
 
-
+# handle noise reduction using noisereduce library, with error handling for missing dependency
 def _run_noise_reduction(input_path: Path, output_path: Path) -> None:
     try:
         import noisereduce as nr
@@ -21,7 +21,7 @@ def _run_noise_reduction(input_path: Path, output_path: Path) -> None:
     denoised_audio = nr.reduce_noise(y=audio, sr=sample_rate, stationary=False)
     sf.write(output_path, denoised_audio, sample_rate)
 
-
+# main function to analyze uploaded voice sample, returning extracted features and timing information
 def analyze_uploaded_voice(content: bytes, original_filename: str | None = None) -> dict:
     if not content:
         raise ValueError("No audio file was uploaded.")
@@ -43,13 +43,6 @@ def analyze_uploaded_voice(content: bytes, original_filename: str | None = None)
         feature_started_at = perf_counter()
         features = extract_feature_dict(denoised_path)
         feature_extraction_ms = round((perf_counter() - feature_started_at) * 1000, 2)
-
-    # TODO: Step persistence - save raw audio, denoised audio, features, and final result to Supabase.
-    # Suggested tables/buckets:
-    # - storage bucket: voice-recordings/raw/{user_id}/{request_id}.wav
-    # - storage bucket: voice-recordings/denoised/{user_id}/{request_id}.wav
-    # - table: voice_analysis_runs with status per step, timings, feature JSON, model output, and user_id.
-    # TODO: Add later steps here: model inference, risk scoring, result explanation, and clinician/report view.
 
     return {
         "request_id": request_id,
