@@ -33,20 +33,6 @@
             </div>
           </div>
         </div>
-        To make it easier to check while developing. delete this later
-        <div v-if="analysisDone" class="analysis-result">
-          <span class="result-status">Analysis Complete</span>
-          <span class="result-detail">
-            {{ featureCount }} acoustic features returned from the backend pipeline.
-          </span>
-          <div class="analysis-metrics">
-            <div v-for="metric in analysisMetrics" :key="metric.label" class="analysis-metric">
-              <span class="metric-label">{{ metric.label }}</span>
-              <span class="metric-value">{{ metric.value }}</span>
-            </div>
-          </div>
-        </div>
-
         <div v-if="analysisError" class="analysis-result analysis-error">
           <span class="result-status">Analysis Failed</span>
           <span class="result-detail">{{ analysisError }}</span>
@@ -61,7 +47,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 import micIcon from '@/assets/icons/Microphone.png'
@@ -78,30 +64,6 @@ const analysisDone = ref(false)
 const analysisError = ref('')
 const analysisResult = ref(null)
 
-const featureCount = computed(() => {
-  const features = analysisResult.value?.features
-  return features ? Object.keys(features).length : 0
-})
-
-const formatDuration = (value) => {
-  if (typeof value !== 'number') return '-'
-  if (value >= 1000) return `${(value / 1000).toFixed(2)}s`
-  return `${Math.round(value)}ms`
-}
-
-// To make it easier to check while developing. delete this later
-const analysisMetrics = computed(() => {
-  const result = analysisResult.value
-  if (!result) return []
-
-  return [
-    { label: 'Request ID', value: result.request_id || '-' },
-    { label: 'Noise reduction', value: formatDuration(result.steps?.noise_reduction?.duration_ms) },
-    { label: 'Feature extraction', value: formatDuration(result.steps?.feature_extraction?.duration_ms) },
-    { label: 'Total time', value: formatDuration(result.duration_ms) },
-  ]
-})
-
 const steps = ref([
   { label: 'Processing audio signal',   icon: micIcon,    progress: 0, status: 'pending' },
   { label: 'Analyzing pitch stability', icon: brainIcon,  progress: 0, status: 'pending' },
@@ -113,9 +75,7 @@ const STEP_DURATIONS = [1600, 2000, 2000, 1800]
 
 function runStep(index) {
   if (index >= steps.value.length) {
-  // freeze before send back to home page, to make it easier to check while developing. delete this later
-  // TODO: navigate to result-dashboard when ready
-    analysisDone.value = true
+    router.push('/result')
     return
   }
 

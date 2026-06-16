@@ -225,8 +225,6 @@ const checkLoggedOut = () => {
 onMounted(checkLoggedOut)
 watch(() => route.query.loggedOut, checkLoggedOut)
 
-const goToLogin = () => router.push('/login')
-const goToSignUp = () => router.push('/signup')
 const goToRecording = () => router.push('/recording')
 
 const scrollTo = (id) => {
