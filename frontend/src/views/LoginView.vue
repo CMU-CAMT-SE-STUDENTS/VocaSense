@@ -194,15 +194,22 @@ const handleSubmit = async () => {
     return true
   }
 
+  const withTimeout = (promise, ms = 5000) =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('network')), ms))
+    ])
+
   try {
     retryCount.value = 0
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) {
         retryCount.value = attempt
-        await new Promise(resolve => setTimeout(resolve, 3000))
+        await new Promise(resolve => setTimeout(resolve, 1500))
       }
       try {
-        const success = await attemptLogin()
+        if (!navigator.onLine) throw new Error('network')
+        const success = await withTimeout(attemptLogin())
         if (!success) return
         showToast('Logged in successfully!')
         setTimeout(() => router.push('/'), 700)
