@@ -6,6 +6,7 @@ from time import perf_counter
 from uuid import uuid4
 
 from feature_extractor import extract_feature_dict
+from voice_quality_analyzer import analyze_voice_quality
 
 # handle noise reduction using noisereduce library, with error handling for missing dependency
 def _run_noise_reduction(input_path: Path, output_path: Path) -> None:
@@ -43,6 +44,9 @@ def analyze_uploaded_voice(content: bytes, original_filename: str | None = None)
         feature_started_at = perf_counter()
         features = extract_feature_dict(denoised_path)
         feature_extraction_ms = round((perf_counter() - feature_started_at) * 1000, 2)
+        
+        quality = analyze_voice_quality(features)
+        analyze_quality_ms = round((perf_counter()- feature_extraction_ms) * 1000,2)
 
     return {
         "request_id": request_id,
@@ -63,14 +67,15 @@ def analyze_uploaded_voice(content: bytes, original_filename: str | None = None)
                 "duration_ms": feature_extraction_ms,
                 "feature_count": len(features),
             },
-            "model_inference": {
-                "status": "todo",
-                "note": "Implement prediction model after feature extraction is finalized.",
+            "descriptive_model": {
+                "status": "done",
+                "duration_ms": analyze_quality_ms,
+                "score": len(quality)
             },
-            "supabase_persistence": {
-                "status": "todo",
-                "note": "Save feature JSON, factor scores, and final result under the authenticated user.",
-            },
+            # "supabase_persistence": {
+            #     "status": "todo",
+            #     "note": "Save feature JSON, factor scores, and final result under the authenticated user.",
+            # },
         },
         "features": dict(features),
         "duration_ms": round((perf_counter() - started_at) * 1000, 2),
