@@ -117,15 +117,22 @@ const handleSubmit = async () => {
     return true
   }
 
+  const withTimeout = (promise, ms = 5000) =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('network')), ms))
+    ])
+
   try {
     retryCount.value = 0
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) {
         retryCount.value = attempt
-        await new Promise(resolve => setTimeout(resolve, 3000))
+        await new Promise(resolve => setTimeout(resolve, 1500))
       }
       try {
-        const success = await attemptSubmit()
+        if (!navigator.onLine) throw new Error('network')
+        const success = await withTimeout(attemptSubmit())
         if (!success) return
         submitted.value = true
         return
