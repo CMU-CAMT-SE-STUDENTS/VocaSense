@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from feature_extractor import extract_feature_dict
 from voice_quality_analyzer import analyze_voice_quality
-
+    
 # main function to analyze uploaded voice sample, returning extracted features and timing information
 def analyze_uploaded_voice(content: bytes, original_filename: str | None = None) -> dict:
     if not content:
@@ -20,15 +20,15 @@ def analyze_uploaded_voice(content: bytes, original_filename: str | None = None)
         tmp_path = Path(tmp_dir)
         raw_path = tmp_path / f"{request_id}_raw.wav"
 
+        feature_started_at = perf_counter()
         raw_path.write_bytes(content)
 
-        feature_started_at = perf_counter()
         features = extract_feature_dict(raw_path)
         feature_extraction_ms = round((perf_counter() - feature_started_at) * 1000, 2)
-        
+        quality_started_at = perf_counter()
         quality = analyze_voice_quality(features)
-        analyze_quality_ms = round((perf_counter()- feature_extraction_ms) * 1000,2)
-
+        analyze_quality_ms = round((perf_counter()- quality_started_at) * 1000,2)
+        
     return {
         "request_id": request_id,
         "input": {

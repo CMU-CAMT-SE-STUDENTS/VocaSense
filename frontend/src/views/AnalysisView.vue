@@ -65,17 +65,17 @@ const analysisError = ref('')
 const analysisResult = ref(null)
 
 const steps = ref([
-  { label: 'Processing audio signal',   icon: micIcon,    progress: 0, status: 'pending' },
-  { label: 'Analyzing pitch stability', icon: brainIcon,  progress: 0, status: 'pending' },
-  { label: 'Detecting vocal strain',    icon: searchIcon, progress: 0, status: 'pending' },
+  { key: 'feature_extraction',label: 'Processing audio signal',   icon: micIcon,    progress: 0, status: 'pending' },
+  { key: 'analyze_quality',label: 'Analyzing voice quality', icon: brainIcon,  progress: 0, status: 'pending' },
+  { label: 'Choosing recommendations',    icon: searchIcon, progress: 0, status: 'pending' },
   { label: 'Generating insights',       icon: chartIcon,  progress: 0, status: 'pending' },
 ])
 
-const STEP_DURATIONS = [1600, 2000, 2000, 1800]
+const STEP_DURATIONS = [1000, 1000, 1000, 1000]
 
 function runStep(index) {
   if (index >= steps.value.length) {
-    router.push('/result')
+    router.push('/')
     return
   }
 
@@ -104,40 +104,95 @@ function runStep(index) {
   requestAnimationFrame(animate)
 }
 
-function runProcessingStep(requestPromise) {
-  const step = steps.value[0]
+const rafMap = new Map()
+function runProcessingStep(step, requestPromise) {
+  if (!step) return
+
   step.status = 'active'
-  step.progress = 4
+  step.progress = 5
 
-  const startedAt = performance.now()
   let finished = false
-  let targetProgress = 4
+  let rafId = null
+  const startedAt = performance.now()
 
-  const animate = () => {
+  const animate = (now) => {
     if (finished) return
+    if (step.status !== 'active') return
 
-    const elapsedMs = performance.now() - startedAt
-    targetProgress = Math.min(94, 8 + Math.log1p(elapsedMs / 220) * 20)
-    step.progress += (targetProgress - step.progress) * 0.12
+    const elapsed = now - startedAt
 
-    requestAnimationFrame(animate)
+    const target = Math.min(
+      94,
+      8 + Math.log1p(elapsed / 220) * 20
+    )
+
+    step.progress += (target - step.progress) * 0.12
+
+    rafId = requestAnimationFrame(animate)
+    rafMap.set(step, rafId)
   }
 
-  requestAnimationFrame(animate)
+  rafId = requestAnimationFrame(animate)
+  rafMap.set(step, rafId)
 
   return requestPromise
     .then((result) => {
       finished = true
+
+      const id = rafMap.get(step)
+      if (id) cancelAnimationFrame(id)
+
       step.progress = 100
       step.status = 'done'
+
       return result
     })
     .catch((err) => {
       finished = true
+
+      const id = rafMap.get(step)
+      if (id) cancelAnimationFrame(id)
+
       step.status = 'error'
       analysisError.value = err?.message || 'Voice analysis API failed.'
+
       throw err
     })
+}
+
+function runStepOnce(step) {
+  if (!step) return Promise.resolve()
+
+  return new Promise((resolve) => {
+    step.status = 'active'
+    step.progress = 0
+
+    const duration = STEP_DURATIONS[step.key] || 1500
+    const start = performance.now()
+
+    let rafId = null
+
+    const animate = (now) => {
+      if (step.status !== 'active') return
+
+      const t = Math.min(1, (now - start) / duration)
+
+      step.progress = 100 * (1 - (1 - t) ** 3)
+
+      if (t >= 1) {
+        step.progress = 100
+        step.status = 'done'
+        resolve()
+        return
+      }
+
+      rafId = requestAnimationFrame(animate)
+      rafMap.set(step, rafId)
+    }
+
+    rafId = requestAnimationFrame(animate)
+    rafMap.set(step, rafId)
+  })
 }
 
 async function analyzePendingRecording(input) {
@@ -147,18 +202,30 @@ async function analyzePendingRecording(input) {
   const request = fetch(`${API_BASE_URL}/api/voice/analyze`, {
     method: 'POST',
     body: formData,
-  }).then(async (response) => {
-    const result = await response.json().catch(() => null)
-    if (!response.ok) throw new Error(result?.detail || 'Voice analysis API failed.')
-    return result
-  })
+  }).then(r => r.json())
+  const featureStep = steps.value.find(s => s.key === 'feature_extraction')
+  const result = await runProcessingStep(featureStep,request)
+  const apiSteps = result.steps
+  if (apiSteps) {
+    for (const step of steps.value) {
+      const api = apiSteps[step.key]
 
-  const result = await runProcessingStep(request)
+      if (api?.status === 'done') {
+        step.status = 'done'
+        step.progress = 100
+      }
+    }
+  }
   analysisResult.value = result
   sessionStorage.setItem('vocasense:lastVoiceAnalysis', JSON.stringify(result))
   window.history.replaceState({ ...window.history.state, voiceAnalysis: result }, '')
+  const nextStep = steps.value.find(s => s.key === 'analyze_quality')
+  if (nextStep) {
+    setTimeout(() => {
+      runStep(1)
+    }, 300)
+  }
   console.log('[voice_analysis]', result)
-  setTimeout(() => runStep(1), 300)
 }
 
 function completeStepsFromStoredResult(result) {
