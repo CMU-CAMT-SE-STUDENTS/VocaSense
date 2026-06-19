@@ -200,10 +200,55 @@ def analyze_voice_quality(features: Dict[str, float]) -> Dict:
     hoarseness_risk = 100-hoarseness
     
     voice_quality = calculate_voice_quality(hoarseness, stability, clarity)
+    
+     # overall condition
+    if voice_quality >= 70:
+      overall_condition = "healthy"
+    elif voice_quality < 70 and voice_quality >= 50:
+      overall_condition = "moderate"
+    else:
+      overall_condition = "warning"
+      
+    # hoarseness condition
+    if hoarseness_risk <= 50:
+      hoarseness_condition = "low"
+    elif hoarseness_risk < 70 and hoarseness_risk >= 50:
+      hoarseness_condition = "moderate"
+    else:
+      hoarseness_condition = "high"
+      
+    # stability condition
+    if stability >=70:
+      stability_condition = "stable"
+    elif stability < 70 and stability >= 50:
+      stability_condition = "slightly_unstable"
+    else:
+      stability_condition = "unstable"
+      
+    # clarity condition
+    if clarity >=70:
+      clarity_condition = "clear"
+    elif clarity < 70 and clarity >= 50:
+      clarity_condition = "slightly_unclear"
+    else:
+      clarity_condition = "unclear"
+      
     return {
-        "voice_quality": round(voice_quality, 2),
-        "hoarseness_risk": round(hoarseness_risk, 2),
-        "stability": round(stability, 2),
-        "clarity": round(clarity, 2),
+        "voice_quality": {
+          "voice_quality_score": round(voice_quality, 2),
+          "voice_condition": overall_condition
+        },
+        "hoarseness_risk":{
+          "hoarseness_risk_score": round(hoarseness_risk, 2),
+          "hoarseness_condition": hoarseness_condition,
+        },
+        "stability": {
+          "stability_score": round(stability, 2),
+          "stability_condition": stability_condition,
+        },
+        "clarity": {
+          "clarity_score": round(clarity, 2),
+          "clarity_condition": clarity_condition,
+        }
     }
     
