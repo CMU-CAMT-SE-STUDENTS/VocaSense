@@ -13,8 +13,8 @@ VOICE_QUALITY_CONFIG = {
             },
             "jitter_local": {
                 "weight": 0.25,
-                "good": 0.032,
-                "moderate": 0.083,
+                "good": 0.0032,
+                "moderate": 0.0083,
                 "reverse": True,
             },
             "shimmer_local": {
@@ -42,8 +42,8 @@ VOICE_QUALITY_CONFIG = {
             },
             "jitter_local": {
                 "weight": 0.34,
-                "good": 0.0037,
-                "moderate": 0.007,
+                "good": 0.0032,
+                "moderate": 0.008,
                 "reverse": True,
             },
             "spectral_entropy": {
@@ -70,8 +70,8 @@ VOICE_QUALITY_CONFIG = {
             },
             "spectral_entropy": {
                 "weight": 0.20,
-                "good": 4.0,
-                "moderate": 7.8,
+                "good": 5.0,
+                "moderate": 10.21,
                 "reverse": True,
             },
         }
@@ -99,7 +99,7 @@ def normalize_feature(
 def calculate_hoarseness(features, config):
 
     score = 0
-    print("----------Hoarseness----------")
+    # print("----------Hoarseness----------")
     for feature_name, cfg in config["features"].items():
         value = features[feature_name]
         feature_score = normalize_feature(
@@ -109,11 +109,11 @@ def calculate_hoarseness(features, config):
             cfg["reverse"]
         )
         
-        print(
-            feature_name,
-            value,
-            feature_score
-        )
+        # print(
+        #     feature_name,
+        #     value,
+        #     feature_score
+        # )
 
         score += feature_score * cfg["weight"]
 
@@ -121,7 +121,7 @@ def calculate_hoarseness(features, config):
 
 def calculate_stability(features, config):
     score = 0
-    print("----------Stability----------")
+    # print("----------Stability----------")
     for feature_name, cfg in config["features"].items():
         value = features[feature_name]
         feature_score = normalize_feature(
@@ -133,18 +133,18 @@ def calculate_stability(features, config):
 
         score += feature_score * cfg["weight"]
         
-        print(
-            feature_name,
-            value,
-            feature_score
-        )
+        # print(
+        #     feature_name,
+        #     value,
+        #     feature_score
+        # )
 
     return round(score * 100, 2)
 
 def calculate_clarity(features, config):
 
     score = 0
-    print("----------Clarity----------")
+    # print("----------Clarity----------")
     for feature_name, cfg in config["features"].items():
         value = features[feature_name]
 
@@ -157,11 +157,11 @@ def calculate_clarity(features, config):
 
         score += feature_score * cfg["weight"]
         
-        print(
-            feature_name,
-            value,
-            feature_score
-        )
+        # print(
+        #     feature_name,
+        #     value,
+        #     feature_score
+        # )
 
     return round(score * 100, 2)
 
