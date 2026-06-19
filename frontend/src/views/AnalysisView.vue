@@ -22,7 +22,7 @@
             v-for="(step, index) in steps"
             :key="index"
             class="step-card"
-            :class="{ active: step.status === 'active', done: step.status === 'done' }"
+            :class="{ active: step.status === 'active', done: step.status === 'done', error: step.status === 'error' }"
           >
             <div class="step-icon-wrap">
               <img :src="step.icon" alt="" class="step-icon" />
@@ -32,6 +32,10 @@
               <div class="step-bar-fill" :style="{ width: step.progress + '%' }"></div>
             </div>
           </div>
+        </div>
+        <div v-if="analysisError" class="analysis-result analysis-error">
+          <span class="result-status">Analysis Failed</span>
+          <span class="result-detail">{{ analysisError }}</span>
         </div>
       </div>
     </div>
@@ -50,25 +54,28 @@ import micIcon from '@/assets/icons/Microphone.png'
 import brainIcon from '@/assets/icons/Brain.png'
 import searchIcon from '@/assets/icons/Search.png'
 import chartIcon from '@/assets/icons/Bar Chart.png'
+import { takePendingVoiceAnalysisInput } from '@/utils/voiceAnalysisStore'
 
 const router = useRouter()
 const goBack = () => router.push('/')
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+
+const analysisDone = ref(false)
+const analysisError = ref('')
+const analysisResult = ref(null)
 
 const steps = ref([
-  { label: 'Processing audio signal',   icon: micIcon,    progress: 0, status: 'pending' },
-  { label: 'Analyzing pitch stability', icon: brainIcon,  progress: 0, status: 'pending' },
-  { label: 'Detecting vocal strain',    icon: searchIcon, progress: 0, status: 'pending' },
+  { key: 'feature_extraction',label: 'Processing audio signal',   icon: micIcon,    progress: 0, status: 'pending' },
+  { key: 'analyze_quality',label: 'Analyzing voice quality', icon: brainIcon,  progress: 0, status: 'pending' },
+  { label: 'Choosing recommendations',    icon: searchIcon, progress: 0, status: 'pending' },
   { label: 'Generating insights',       icon: chartIcon,  progress: 0, status: 'pending' },
 ])
 
-const STEP_DURATIONS = [1600, 2000, 2000, 1800]
+const STEP_DURATIONS = [1000, 1000, 1000, 1000]
 
 function runStep(index) {
   if (index >= steps.value.length) {
-    setTimeout(() => {
-      // TODO: navigate to result-dashboard when ready
-      router.push('/')
-    }, 700)
+    router.push('/')
     return
   }
 
@@ -77,22 +84,180 @@ function runStep(index) {
   step.progress = 0
 
   const duration = STEP_DURATIONS[index]
-  const interval = 30
-  const increment = (interval / duration) * 100
+  const startedAt = performance.now()
 
-  const timer = setInterval(() => {
-    step.progress = Math.min(100, step.progress + increment)
-    if (step.progress >= 100) {
+  const animate = (now) => {
+    const elapsed = now - startedAt
+    const ratio = Math.min(1, elapsed / duration)
+    step.progress = 100 * (1 - (1 - ratio) ** 3)
+
+    if (ratio >= 1) {
       step.progress = 100
       step.status = 'done'
-      clearInterval(timer)
       setTimeout(() => runStep(index + 1), 300)
+      return
     }
-  }, interval)
+
+    requestAnimationFrame(animate)
+  }
+
+  requestAnimationFrame(animate)
 }
 
-onMounted(() => {
-  setTimeout(() => runStep(0), 500)
+const rafMap = new Map()
+function runProcessingStep(step, requestPromise) {
+  if (!step) return
+
+  step.status = 'active'
+  step.progress = 5
+
+  let finished = false
+  let rafId = null
+  const startedAt = performance.now()
+
+  const animate = (now) => {
+    if (finished) return
+    if (step.status !== 'active') return
+
+    const elapsed = now - startedAt
+
+    const target = Math.min(
+      94,
+      8 + Math.log1p(elapsed / 220) * 20
+    )
+
+    step.progress += (target - step.progress) * 0.12
+
+    rafId = requestAnimationFrame(animate)
+    rafMap.set(step, rafId)
+  }
+
+  rafId = requestAnimationFrame(animate)
+  rafMap.set(step, rafId)
+
+  return requestPromise
+    .then((result) => {
+      finished = true
+
+      const id = rafMap.get(step)
+      if (id) cancelAnimationFrame(id)
+
+      step.progress = 100
+      step.status = 'done'
+
+      return result
+    })
+    .catch((err) => {
+      finished = true
+
+      const id = rafMap.get(step)
+      if (id) cancelAnimationFrame(id)
+
+      step.status = 'error'
+      analysisError.value = err?.message || 'Voice analysis API failed.'
+
+      throw err
+    })
+}
+
+function runStepOnce(step) {
+  if (!step) return Promise.resolve()
+
+  return new Promise((resolve) => {
+    step.status = 'active'
+    step.progress = 0
+
+    const duration = STEP_DURATIONS[step.key] || 1500
+    const start = performance.now()
+
+    let rafId = null
+
+    const animate = (now) => {
+      if (step.status !== 'active') return
+
+      const t = Math.min(1, (now - start) / duration)
+
+      step.progress = 100 * (1 - (1 - t) ** 3)
+
+      if (t >= 1) {
+        step.progress = 100
+        step.status = 'done'
+        resolve()
+        return
+      }
+
+      rafId = requestAnimationFrame(animate)
+      rafMap.set(step, rafId)
+    }
+
+    rafId = requestAnimationFrame(animate)
+    rafMap.set(step, rafId)
+  })
+}
+
+async function analyzePendingRecording(input) {
+  const formData = new FormData()
+  formData.append('file', input.wavBlob, 'voice-sample.wav')
+
+  const request = fetch(`${API_BASE_URL}/api/voice/analyze`, {
+    method: 'POST',
+    body: formData,
+  }).then(r => r.json())
+  const featureStep = steps.value.find(s => s.key === 'feature_extraction')
+  const result = await runProcessingStep(featureStep,request)
+  const apiSteps = result.steps
+  if (apiSteps) {
+    for (const step of steps.value) {
+      const api = apiSteps[step.key]
+
+      if (api?.status === 'done') {
+        step.status = 'done'
+        step.progress = 100
+      }
+    }
+  }
+  analysisResult.value = result
+  sessionStorage.setItem('vocasense:lastVoiceAnalysis', JSON.stringify(result))
+  window.history.replaceState({ ...window.history.state, voiceAnalysis: result }, '')
+  const nextStep = steps.value.find(s => s.key === 'analyze_quality')
+  if (nextStep) {
+    setTimeout(() => {
+      runStep(1)
+    }, 300)
+  }
+  console.log('[voice_analysis]', result)
+}
+
+function completeStepsFromStoredResult(result) {
+  analysisResult.value = result
+  steps.value.forEach((step) => {
+    step.status = 'done'
+    step.progress = 100
+  })
+  analysisDone.value = true
+}
+
+onMounted(async () => {
+  const pendingInput = takePendingVoiceAnalysisInput()
+  if (pendingInput?.wavBlob) {
+    await analyzePendingRecording(pendingInput).catch(() => {})
+    return
+  }
+
+  const stateResult = window.history.state?.voiceAnalysis
+  const storedResult = sessionStorage.getItem('vocasense:lastVoiceAnalysis')
+  try {
+    analysisResult.value = stateResult || (storedResult ? JSON.parse(storedResult) : null)
+  } catch {
+    analysisResult.value = stateResult || null
+  }
+
+  if (analysisResult.value) {
+    completeStepsFromStoredResult(analysisResult.value)
+  } else {
+    analysisError.value = 'No recording was found. Please record a new voice sample.'
+    steps.value[0].status = 'error'
+  }
 })
 </script>
 
@@ -211,6 +376,77 @@ onMounted(() => {
   gap: 12px;
 }
 
+.analysis-result {
+  width: 100%;
+  max-width: 560px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f4f7ff;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+}
+
+.result-status {
+  font-size: 14px;
+  font-weight: 700;
+  color: #2d7c52;
+}
+
+.result-detail {
+  font-size: 12px;
+  font-weight: 500;
+  color: #5b6680;
+}
+
+.analysis-metrics {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  text-align: left;
+}
+
+.analysis-metric {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid rgba(101, 148, 228, 0.16);
+}
+
+.metric-label,
+.metric-value {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-label {
+  margin-bottom: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #8b96ad;
+}
+
+.metric-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2f4773;
+}
+
+.analysis-error {
+  background: #fff3f3;
+}
+
+.analysis-error .result-status {
+  color: #c83d3d;
+}
+
 .step-card {
   background: #6D96DE;
   border-radius: 50px;
@@ -223,8 +459,13 @@ onMounted(() => {
 }
 
 .step-card.active,
-.step-card.done {
+.step-card.done,
+.step-card.error {
   opacity: 1;
+}
+
+.step-card.error {
+  background: #d65b5b;
 }
 
 .step-icon-wrap {
@@ -267,7 +508,7 @@ onMounted(() => {
   height: 100%;
   background: #fff;
   border-radius: 20px;
-  transition: width 0.03s linear;
+  transition: width 0.12s ease-out;
 }
 
 .disclaimer {
@@ -291,6 +532,7 @@ onMounted(() => {
   .analysis-subtitle { font-size: 12px; }
   .step-card { padding: 10px 12px; gap: 8px; }
   .step-label { font-size: 12px; width: 148px; }
+  .analysis-metrics { grid-template-columns: 1fr; }
   .disclaimer { font-size: 11px; }
 }
 </style>
