@@ -8,12 +8,14 @@ import librosa
 import numpy as np
 import parselmouth
 from parselmouth.praat import call
-
+import antropy as ant
+from scipy import signal
+from scipy.signal import resample
 
 EPSILON = 1e-10
 N_MFCC = 13
 
-
+# save float conversion and NaN/inf handling in one place
 def _safe_float(value: float | int | np.floating | None) -> float:
     if value is None:
         return 0.0
@@ -22,7 +24,7 @@ def _safe_float(value: float | int | np.floating | None) -> float:
         return 0.0
     return value
 
-
+# safe mean and std that ignore NaN/inf and return 0.0 if no valid values
 def _safe_mean(values: Iterable[float]) -> float:
     values = np.asarray(list(values), dtype=float)
     values = values[np.isfinite(values)]
@@ -30,7 +32,7 @@ def _safe_mean(values: Iterable[float]) -> float:
         return 0.0
     return _safe_float(np.mean(values))
 
-
+# safe std that ignores NaN/inf and returns 0.0 if less than 2 valid values
 def _safe_std(values: Iterable[float]) -> float:
     values = np.asarray(list(values), dtype=float)
     values = values[np.isfinite(values)]
@@ -38,7 +40,7 @@ def _safe_std(values: Iterable[float]) -> float:
         return 0.0
     return _safe_float(np.std(values, ddof=0))
 
-
+# calculate average power in a frequency band from a spectrogram
 def _band_power(
     spectrogram_power: np.ndarray,
     frequencies: np.ndarray,
@@ -50,7 +52,7 @@ def _band_power(
         return 0.0
     return _safe_float(np.mean(np.sum(spectrogram_power[mask, :], axis=0)))
 
-
+# extract voice quality features using parselmouth/praat, with error handling
 def _extract_voice_quality_features(sound: parselmouth.Sound) -> OrderedDict[str, float]:
     features: OrderedDict[str, float] = OrderedDict()
 
@@ -96,10 +98,9 @@ def _extract_voice_quality_features(sound: parselmouth.Sound) -> OrderedDict[str
         )
     except Exception:
         features["cpps_db"] = 0.0
-
     return features
 
-
+# estimate CPPS from raw audio using cepstral analysis
 def _estimate_cpps(y: np.ndarray, sr: int) -> float:
     frame_length = min(2048, max(256, int(round(sr * 0.04))))
     hop_length = max(1, int(round(sr * 0.01)))
@@ -138,7 +139,7 @@ def _estimate_cpps(y: np.ndarray, sr: int) -> float:
 
     return _safe_mean(cpps_values)
 
-
+# extract F0 features using librosa.pyin, with error handling
 def _extract_f0_features(y: np.ndarray, sr: int) -> OrderedDict[str, float]:
     features: OrderedDict[str, float] = OrderedDict()
 
@@ -161,7 +162,7 @@ def _extract_f0_features(y: np.ndarray, sr: int) -> OrderedDict[str, float]:
 
     return features
 
-
+# extract spectral features including alpha ratio, spectral flux, spectral slope, and spectral centroid. Using librosa, with error handling
 def _extract_spectral_features(y: np.ndarray, sr: int) -> OrderedDict[str, float]:
     features: OrderedDict[str, float] = OrderedDict()
 
@@ -196,7 +197,7 @@ def _extract_spectral_features(y: np.ndarray, sr: int) -> OrderedDict[str, float
 
     return features
 
-
+# extract MFCC features using librosa, with error handling. Returning mean and std for each coefficient
 def _extract_mfcc_features(y: np.ndarray, sr: int) -> OrderedDict[str, float]:
     features: OrderedDict[str, float] = OrderedDict()
 
@@ -211,7 +212,33 @@ def _extract_mfcc_features(y: np.ndarray, sr: int) -> OrderedDict[str, float]:
 
     return features
 
+# extract sample entropy features using antropy, with error handling
+def _extract_sample_entropy_features(y: np.ndarray, sr: int) -> OrderedDict[str, float]:
+    features: OrderedDict[str, float] = OrderedDict()
 
+    y_small = resample(y, 4000)
+    try:
+        features["sample_entropy"] = float(
+            ant.sample_entropy(y_small)
+        )
+    except Exception:
+        features["sample_entropy"] = 0.0
+
+    return features
+
+# extract spectral entropy features using antropy, with error handling
+def _extract_spectral_entropy_features(y: np.ndarray, sr: int) -> OrderedDict[str, float]:
+    features: OrderedDict[str, float] = OrderedDict()
+    try:
+        features["spectral_entropy"] = float(
+            ant.spectral_entropy(y, sr)
+        )
+    except Exception:
+        features["spectral_entropy"] = 0.0
+
+    return features
+
+# main feature extraction function that combines all features into a single dictionary, with option to return as NumPy array
 def extract_feature_dict(file_path: str | Path) -> OrderedDict[str, float]:
     """
     Extract clinical/acoustic voice features from an audio file.
@@ -238,10 +265,11 @@ def extract_feature_dict(file_path: str | Path) -> OrderedDict[str, float]:
     features.update(_extract_f0_features(y, sr))
     features.update(_extract_spectral_features(y, sr))
     features.update(_extract_mfcc_features(y, sr))
-
+    features.update(_extract_sample_entropy_features(y, sr))
+    features.update(_extract_spectral_entropy_features(y, sr))
     return features
 
-
+# main extraction function that returns features as a NumPy array, with option to get feature names
 def extract_features(file_path: str | Path, as_dict: bool = False) -> np.ndarray | OrderedDict[str, float]:
     """
     Extract features from an audio file.
@@ -254,7 +282,7 @@ def extract_features(file_path: str | Path, as_dict: bool = False) -> np.ndarray
         return features
     return np.asarray(list(features.values()), dtype=np.float32)
 
-
+# helper function to get feature names in the same order as extract_features()
 def get_feature_names() -> list[str]:
     """Return feature names in the same order as extract_features()."""
     dummy_names = [
@@ -262,6 +290,8 @@ def get_feature_names() -> list[str]:
         "shimmer_local",
         "hnr_db",
         "cpps_db",
+        "sample_entropy",
+        "spectral_entropy",
         "f0_mean_hz",
         "f0_std_hz",
         "f0_min_hz",
@@ -277,3 +307,8 @@ def get_feature_names() -> list[str]:
     mfcc_mean_names = [f"mfcc_{index}_mean" for index in range(1, N_MFCC + 1)]
     mfcc_std_names = [f"mfcc_{index}_std" for index in range(1, N_MFCC + 1)]
     return dummy_names + mfcc_mean_names + mfcc_std_names
+
+# print("Starting feature extraction test...")
+# file_path = Path(r"D:\Work\VocaSense\ml\dataset\ไฟล์เสียง\cold\cold1.mp3")
+# features = extract_features(file_path, as_dict=True)
+# print(features)
