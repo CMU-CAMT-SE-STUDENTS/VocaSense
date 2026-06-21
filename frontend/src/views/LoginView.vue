@@ -25,7 +25,7 @@
               v-model="form.identifier"
               type="text"
               class="field-input"
-              :class="{ 'input-error': errors.identifier }"
+              :class="{ 'input-error': errors.identifier || loginError }"
               placeholder="Enter your username or email"
             />
             <span v-if="errors.identifier" class="error-text">{{ errors.identifier }}</span>
@@ -39,7 +39,7 @@
                 v-model="form.password"
                 :type="showPassword ? 'text' : 'password'"
                 class="field-input password-input"
-                :class="{ 'input-error': errors.password }"
+                :class="{ 'input-error': errors.password || loginError }"
                 placeholder="Enter your password"
               />
               <button type="button" class="toggle-eye" @click="showPassword = !showPassword">
@@ -55,6 +55,8 @@
             </div>
             <span v-if="errors.password" class="error-text">{{ errors.password }}</span>
           </div>
+
+          <span v-if="loginError" class="error-text error-general">{{ loginError }}</span>
 
           <!-- Forgot Password -->
           <p class="forgot-link">
@@ -116,6 +118,7 @@ const router = useRouter()
 const showPassword = ref(false)
 const isSubmitting = ref(false)
 const retryCount = ref(0)
+const loginError = ref('')
 
 const toast = reactive({ show: false, message: '', type: 'success' })
 let toastTimer = null
@@ -142,6 +145,7 @@ const validate = () => {
   let valid = true
   errors.identifier = ''
   errors.password = ''
+  loginError.value = ''
 
   if (!form.identifier.trim()) {
     errors.identifier = 'Email or username is required'
@@ -171,7 +175,7 @@ const handleSubmit = async () => {
 
       if (userError) throw userError
       if (!data) {
-        errors.identifier = 'Invalid email/username or password'
+        loginError.value = 'Invalid email/username or password'
         return false
       }
       loginEmail = data.email
@@ -187,7 +191,7 @@ const handleSubmit = async () => {
       if (msg.includes('fetch') || msg.includes('network') || msg.includes('connect')) {
         throw error
       }
-      errors.password = 'Invalid email/username or password'
+      loginError.value = 'Invalid email/username or password'
       return false
     }
 
@@ -418,6 +422,12 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   font-size: 11px;
   color: #e53935;
   margin-top: 4px;
+}
+
+.error-general {
+  margin-top: 8px;
+  margin-bottom: 2px;
+  font-size: 12px;
 }
 
 /* ── Forgot Link ── */
