@@ -210,7 +210,7 @@ def analyze_voice_quality(features: Dict[str, float]) -> Dict:
       overall_condition = "warning"
       
     # hoarseness condition
-    if hoarseness_risk <= 50:
+    if hoarseness_risk < 50:
       hoarseness_condition = "low"
     elif hoarseness_risk < 70 and hoarseness_risk >= 50:
       hoarseness_condition = "moderate"
