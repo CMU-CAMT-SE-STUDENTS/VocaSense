@@ -498,7 +498,9 @@ onMounted(async () => {
 
 .step-bar-track {
   flex: 1;
-  height: 13px;
+  height: 9px;
+  margin-left: 24px;
+  margin-right: 6px;
   background: rgba(255,255,255,0.35);
   border-radius: 20px;
   overflow: hidden;
