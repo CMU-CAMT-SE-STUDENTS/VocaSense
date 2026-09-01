@@ -6,6 +6,7 @@ import ForgotPassword from '../views/ForgotPassword.vue'
 import ResetPassword from '../views/ResetPassword.vue'
 import RecordingView from '../views/RecordingView.vue'
 import AnalysisView from '../views/AnalysisView.vue'
+import HistoryView from '../views/HistoryView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -44,6 +45,11 @@ const router = createRouter({
       path: '/analysis',
       name: 'analysis',
       component: AnalysisView
+    },
+    {
+      path: '/history',
+      name: 'history',
+      component: HistoryView
     }
   ]
 })
