@@ -75,7 +75,7 @@ const STEP_DURATIONS = [1000, 1000, 1000, 1000]
 
 function runStep(index) {
   if (index >= steps.value.length) {
-    router.push('/')
+    router.push('/result')
     return
   }
 
@@ -218,6 +218,7 @@ async function analyzePendingRecording(input) {
   }
   analysisResult.value = result
   sessionStorage.setItem('vocasense:lastVoiceAnalysis', JSON.stringify(result))
+  sessionStorage.setItem('vocasense:lastVoiceAnalysisAt', new Date().toISOString())
   window.history.replaceState({ ...window.history.state, voiceAnalysis: result }, '')
   const nextStep = steps.value.find(s => s.key === 'analyze_quality')
   if (nextStep) {
