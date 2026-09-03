@@ -6,6 +6,7 @@ import ForgotPassword from '../views/ForgotPassword.vue'
 import ResetPassword from '../views/ResetPassword.vue'
 import RecordingView from '../views/RecordingView.vue'
 import AnalysisView from '../views/AnalysisView.vue'
+import ImproveResultView from '../views/ImproveResultView.vue'
 import HistoryView from '../views/HistoryView.vue'
 import ResultView from '../views/ResultView.vue'
 
@@ -46,6 +47,11 @@ const router = createRouter({
       path: '/analysis',
       name: 'analysis',
       component: AnalysisView
+    },
+    {
+      path: '/improve-result',
+      name: 'improve-result',
+      component: ImproveResultView
     },
     {
       path: '/history',
