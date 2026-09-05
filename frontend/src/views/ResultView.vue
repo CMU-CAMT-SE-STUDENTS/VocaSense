@@ -8,7 +8,7 @@
 
         <div class="topbar-center">
           <div class="topbar-badge">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 1 0 9 9M12 3v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <img src="@/assets/icons/Sparkles_1.png" alt="" class="glyph-img" />
           </div>
           <div>
             <h1 class="topbar-title">Voice Analysis Complete</h1>
@@ -34,14 +34,14 @@
       </div>
 
       <section class="status-card">
-        <div class="status-icon" :class="'risk-bg-' + overallMeta.level">
+        <div class="status-icon" :class="overallMeta.level === 'low' ? 'status-icon-healthy' : 'risk-bg-' + overallMeta.level">
           <StatusIcon :level="overallMeta.level" />
         </div>
         <span class="status-badge" :class="'risk-bg-' + overallMeta.level + ' risk-text-' + overallMeta.level">{{ overallMeta.badge }}</span>
         <h2 class="status-title">Your Voice Health Status</h2>
         <p class="status-subtitle">{{ overallMeta.subtitle }}</p>
         <div class="status-actions">
-          <button class="btn-outline" type="button" @click="router.push('/recording')">
+          <button class="btn-outline btn-outline-primary" type="button" @click="router.push('/recording')">
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 4v5h5M20 20v-5h-5M4.6 15a8 8 0 0 0 14.8 1.5M19.4 9A8 8 0 0 0 4.6 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Take Another Test
           </button>
@@ -90,8 +90,15 @@
 
       <section class="bottom-grid">
         <div class="card rec-card">
-          <h3 class="card-title">Personalized Recommendations</h3>
-          <p class="card-subtitle">Follow these tips to improve your vocal health</p>
+          <div class="rec-card-head">
+            <div class="rec-card-icon">
+              <img src="@/assets/icons/check_mark.png" alt="" class="glyph-img" />
+            </div>
+            <div>
+              <h3 class="card-title">Personalized Recommendations</h3>
+              <p class="card-subtitle">Follow these tips to improve your vocal health</p>
+            </div>
+          </div>
           <div class="rec-list">
             <div v-for="rec in recommendations" :key="rec.text" class="rec-item" :class="'priority-bg-' + rec.priority">
               <span class="rec-icon" :class="'priority-icon-' + rec.priority">
@@ -99,7 +106,10 @@
               </span>
               <span class="rec-text-col">
                 <span class="rec-text">{{ rec.text }}</span>
-                <span class="rec-priority" :class="'priority-text-' + rec.priority">{{ rec.priority === 'high' ? 'High' : 'Moderate' }} Priority</span>
+                <span class="rec-priority" :class="'priority-text-' + rec.priority">
+                  <span class="priority-dot" :class="'priority-dot-' + rec.priority"></span>
+                  {{ rec.priority === 'high' ? 'High' : 'Moderate' }} Priority
+                </span>
               </span>
             </div>
           </div>
@@ -108,7 +118,7 @@
         <div class="side-cards">
           <button class="card improve-card" type="button" @click="router.push('/improve-result')">
             <div class="improve-icon">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6a1 1 0 0 1 1 1v1H8V4a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 5H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2M9 12h6M9 16h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <img src="@/assets/icons/test_passed.png" alt="" class="glyph-img" />
             </div>
             <span class="improve-text">
               <strong>Improve this result</strong>
@@ -119,12 +129,12 @@
 
           <div class="card progress-card">
             <div class="progress-icon">
-              <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <img src="@/assets/icons/research.png" alt="" class="glyph-img" />
             </div>
             <strong class="progress-title">Track Your Progress</strong>
             <p class="progress-desc">Create a free account to save your test results, view history, and monitor your voice health over time.</p>
             <button class="btn-primary" type="button" @click="router.push('/signup')">Create Account</button>
-            <button class="link-plain" type="button" @click="router.push('/login')">Already have an account? Log in</button>
+            <button class="link-underline" type="button" @click="router.push('/login')">Already have an account? Log in</button>
           </div>
         </div>
       </section>
@@ -145,6 +155,14 @@
 import { ref, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
+import AudioWaveIcon from '@/assets/icons/audio_wave.png'
+import AudioIcon from '@/assets/icons/audio.png'
+import WaterIcon from '@/assets/icons/water.png'
+import MicrophoneIcon from '@/assets/icons/Microphone.png'
+import SleepingBedIcon from '@/assets/icons/sleeping_bed.png'
+import CheckMarkIcon from '@/assets/icons/check_mark.png'
+import SparklesIcon from '@/assets/icons/Sparkles_1.png'
+import MuteIcon from '@/assets/icons/mute.png'
 
 const router = useRouter()
 const result = ref(null)
@@ -179,9 +197,9 @@ const improveLabel = computed(() =>
 
 // ── Condition → display copy ────────────────────────────────────────
 const OVERALL_META = {
-  healthy: { level: 'low', badge: 'No Vocal Strain Detected', subtitle: 'Your voice sounds healthy. Keep up the good vocal habits and stay hydrated.' },
-  moderate: { level: 'moderate', badge: 'Moderate Vocal Strain', subtitle: "We've detected some signs of vocal strain. Follow the recommendations below to improve your vocal health." },
-  warning: { level: 'high', badge: 'Vocal Strain Detected', subtitle: "We've detected signs of vocal strain. Follow the recommendations below, and consider consulting a specialist if symptoms persist." }
+  healthy: { level: 'low', badge: 'No Vocal Strain Detected', subtitle: 'Your voice sounds healthy — keep up the good habits!' },
+  moderate: { level: 'moderate', badge: 'Moderate Vocal Strain', subtitle: 'Your voice shows some strain. Try the tips below to help it recover.' },
+  warning: { level: 'high', badge: 'Vocal Strain Detected', subtitle: "Your voice shows signs of strain. Try the tips below, and see a specialist if it doesn't improve." }
 }
 
 const CLARITY_META = {
@@ -277,6 +295,7 @@ const recommendations = computed(() => {
   if (hoarse === 'high' || overall === 'warning') {
     items.push({ kind: 'rest', text: 'Give your voice a rest for 2-3 hours', priority: 'high' })
     items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'high' })
+    items.push({ kind: 'sleep', text: 'Get a full night of sleep to help your voice recover', priority: 'high' })
   } else {
     items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'moderate' })
   }
@@ -353,43 +372,36 @@ const StatusIcon = (props) => {
       h('path', { d: 'M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
     ])
   }
-  return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-    h('path', { d: 'm5 13 4 4L19 7', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
-  ])
+  return h('img', { src: CheckMarkIcon, alt: '', class: 'glyph-img' })
 }
 
-// Filled white glyphs on a gradient square, per the design: a sparkle for
-// clarity, equalizer bars for stability, a head silhouette for hoarseness.
+// Image glyphs on a gradient square: sparkle for clarity, waveform for
+// stability, mute-mic for hoarseness.
 const MetricIcon = (props) => {
   if (props.kind === 'clarity') {
-    return h('svg', { viewBox: '0 0 24 24', fill: 'currentColor' }, [
-      h('path', { d: 'M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2Z' }),
-      h('path', { d: 'M19 15l.7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15Z' })
-    ])
+    return h('img', { src: SparklesIcon, alt: '', class: 'glyph-img' })
   }
   if (props.kind === 'stability') {
-    return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-      h('path', {
-        d: 'M4 14v-4M8 17v-10M12 19v-14M16 17v-10M20 14v-4',
-        stroke: 'currentColor', 'stroke-width': '2.4', 'stroke-linecap': 'round'
-      })
-    ])
+    return h('img', { src: AudioWaveIcon, alt: '', class: 'glyph-img' })
   }
-  return h('svg', { viewBox: '0 0 24 24', fill: 'currentColor' }, [
-    h('circle', { cx: '12', cy: '8', r: '4.2' }),
-    h('path', { d: 'M4.5 21c0-4.2 3.4-7.5 7.5-7.5s7.5 3.3 7.5 7.5a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1Z' })
-  ])
+  return h('img', { src: MuteIcon, alt: '', class: 'glyph-img' })
 }
 
+// Recommendation icons recolor per priority (red for high, brown for
+// moderate) via `currentColor`, so these stay inline SVG rather than fixed-
+// color PNG assets, which would flatten that priority color-coding.
+// water/voice/warmup/sleep use white-glyph image assets (per-kind, fixed
+// asset regardless of priority) — the priority color-coding still comes
+// through via the square's own background color (see .priority-icon-*),
+// same pattern as the metric cards. "rest" has no matching asset yet, so it
+// stays inline SVG.
 const RecommendationIcon = (props) => {
-  const paths = {
-    rest: 'M12 7v5l3 3M12 3a9 9 0 1 0 9 9',
-    water: 'M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z',
-    voice: 'M3 9v6h4l5 4V5L7 9H3ZM17 8a5 5 0 0 1 0 8m2.5-10.5a8 8 0 0 1 0 13',
-    warmup: 'M3 12h3l2-5 4 10 2-5h3l2 3'
+  const images = { water: WaterIcon, voice: AudioIcon, warmup: MicrophoneIcon, sleep: SleepingBedIcon }
+  if (images[props.kind]) {
+    return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
   }
   return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-    h('path', { d: paths[props.kind], stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+    h('path', { d: 'M12 7v5l3 3M12 3a9 9 0 1 0 9 9', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
   ])
 }
 </script>
@@ -424,29 +436,39 @@ const RecommendationIcon = (props) => {
 
 /* ── Top bar ── */
 .topbar {
+  position: sticky;
+  top: 16px;
+  z-index: 20;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  background: #fff;
+  border-radius: 20px;
+  padding: 14px 20px;
+  border: 1px solid rgba(101, 148, 228, 0.12);
+  box-shadow: 0 2px 16px rgba(101, 148, 228, 0.08);
 }
 
 .btn-back {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
+  gap: 7px;
+  padding: 10px 20px;
   border: 1px solid rgba(101, 148, 228, 0.35);
   border-radius: 20px;
   background: #fff;
   font-family: 'Poppins', sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: #6594e4;
   cursor: pointer;
+  transition: opacity 0.2s;
 }
 
-.back-arrow { font-size: 15px; }
+.btn-back:hover { opacity: 0.75; }
+
+.back-arrow { font-size: 16px; }
 
 .topbar-center {
   display: flex;
@@ -455,8 +477,8 @@ const RecommendationIcon = (props) => {
 }
 
 .topbar-badge {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: linear-gradient(135deg, #a5c4f7 0%, #6594e4 100%);
   color: #fff;
@@ -466,7 +488,7 @@ const RecommendationIcon = (props) => {
   flex-shrink: 0;
 }
 
-.topbar-badge svg { width: 18px; height: 18px; }
+.topbar-badge svg, .topbar-badge .glyph-img { width: 25px; height: 25px; object-fit: contain; }
 
 .topbar-title {
   font-size: 15px;
@@ -485,6 +507,7 @@ const RecommendationIcon = (props) => {
 .topbar-actions {
   display: flex;
   gap: 8px;
+  margin-left: auto;
 }
 
 .btn-ghost {
@@ -510,12 +533,13 @@ const RecommendationIcon = (props) => {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  background: #eaf1ff;
-  border: 1px solid rgba(101, 148, 228, 0.25);
+  background: #d9e6fc;
+  border: 1px solid rgba(101, 148, 228, 0.3);
   border-radius: 14px;
   padding: 12px 16px;
   color: #3d5a99;
   font-size: 12.5px;
+  font-weight: 500;
   line-height: 1.6;
 }
 
@@ -544,13 +568,15 @@ const RecommendationIcon = (props) => {
   justify-content: center;
 }
 
-.status-icon svg { width: 26px; height: 26px; }
+.status-icon svg, .status-icon .glyph-img { width: 26px; height: 26px; object-fit: contain; }
+
+.status-icon-healthy { background: linear-gradient(135deg, #3fc987, #73d8a5, #a8e8c4); }
 
 .status-badge {
   padding: 5px 14px;
   border-radius: 20px;
   font-size: 11.5px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .status-title {
@@ -562,8 +588,10 @@ const RecommendationIcon = (props) => {
 
 .status-subtitle {
   font-size: 13px;
-  color: #667085;
-  max-width: 480px;
+  font-weight: 600;
+  color: #6b7590;
+  max-width: 100%;
+  white-space: nowrap;
   line-height: 1.6;
   margin: 0;
 }
@@ -594,6 +622,13 @@ const RecommendationIcon = (props) => {
 .btn-outline svg { width: 16px; height: 16px; }
 .btn-outline:hover { background: #f4f7ff; }
 
+.btn-outline-primary {
+  border: none;
+  background: linear-gradient(102deg, #95b9f7 8.63%, #6594e4 92.33%);
+  color: #fff;
+}
+.btn-outline-primary:hover { background: linear-gradient(102deg, #95b9f7 8.63%, #6594e4 92.33%); opacity: 0.9; }
+
 /* ── Risk tokens ── */
 .risk-bg-low { background: #e3f7ec; color: #1f9d5b; }
 .risk-bg-moderate { background: #fff3dc; color: #b7791f; }
@@ -621,9 +656,9 @@ const RecommendationIcon = (props) => {
   border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
-.metric-bg-low { background: linear-gradient(135deg, #ffffff 3%, #dff5e8 66%, #eafbf1 100%); }
-.metric-bg-moderate { background: linear-gradient(135deg, #ffffff 3%, #ffe7bd 66%, #fff5e0 100%); }
-.metric-bg-high { background: linear-gradient(135deg, #ffffff 3%, #ffd6cf 66%, #ffeeea 100%); }
+.metric-bg-low { background: linear-gradient(135deg, #ffffff 3%, #f1ffee 66%, #e0ffe0 100%); }
+.metric-bg-moderate { background: linear-gradient(135deg, #ffffff 3%, #fffdf4 66%, #fff5e0 100%); }
+.metric-bg-high { background: linear-gradient(135deg, #ffffff 3%, #fff4f4 66%, #ffe0e0 100%); }
 
 .metric-card-top {
   display: flex;
@@ -632,9 +667,10 @@ const RecommendationIcon = (props) => {
 }
 
 .metric-icon-square {
-  width: 40px;
-  height: 40px;
-  border-radius: 13px;
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -642,11 +678,11 @@ const RecommendationIcon = (props) => {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
-.metric-icon-square svg { width: 20px; height: 20px; }
+.metric-icon-square svg, .metric-icon-square .glyph-img { width: 30px; height: 30px; }
 
-.metric-icon-low { background: linear-gradient(135deg, #34c77b, #a8e8c4); }
-.metric-icon-moderate { background: linear-gradient(135deg, #f19d2e, #ffd9a0); }
-.metric-icon-high { background: linear-gradient(135deg, #ff6149, #ffdfd7); }
+.metric-icon-low { background: linear-gradient(135deg, #3fc987, #73d8a5, #a8e8c4); }
+.metric-icon-moderate { background: linear-gradient(135deg, #f5942f, #faad4f, #ffc670); }
+.metric-icon-high { background: linear-gradient(135deg, #f04b34, #f77b68, #ffab9c); }
 
 /* ── Info popover ── */
 .info-wrap { position: relative; }
@@ -661,7 +697,7 @@ const RecommendationIcon = (props) => {
 }
 
 .metric-info:hover { color: #00000088; }
-.metric-info svg { width: 16px; height: 16px; }
+.metric-info svg { width: 20px; height: 20px; }
 
 .info-popover {
   position: absolute;
@@ -703,7 +739,7 @@ const RecommendationIcon = (props) => {
   flex-shrink: 0;
 }
 
-.info-popover-icon svg { width: 17px; height: 17px; }
+.info-popover-icon svg, .info-popover-icon .glyph-img { width: 17px; height: 17px; object-fit: contain; }
 
 .brand-icon-clarity { background: linear-gradient(135deg, #6da5ff, #b8d3ff); }
 .brand-icon-stability { background: linear-gradient(135deg, #acb7fc, #e8e7ff); }
@@ -782,6 +818,26 @@ const RecommendationIcon = (props) => {
   padding: 20px 22px;
 }
 
+.rec-card-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.rec-card-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: linear-gradient(137deg, #b47aef 6.18%, #95b9f7 94.01%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rec-card-icon .glyph-img { width: 26px; height: 26px; object-fit: contain; }
+
 .card-title {
   font-size: 15px;
   font-weight: 700;
@@ -791,8 +847,9 @@ const RecommendationIcon = (props) => {
 
 .card-subtitle {
   font-size: 12px;
+  font-weight: 500;
   color: #8b96ad;
-  margin: 0 0 16px;
+  margin: 0;
 }
 
 .rec-list {
@@ -810,29 +867,33 @@ const RecommendationIcon = (props) => {
   text-align: left;
 }
 
-.priority-bg-high { background: #fdeaea; }
-.priority-bg-moderate { background: #fff3dc; }
+.priority-bg-high { background: #ffe5e0; }
+.priority-bg-moderate { background: #fff5e0; }
 
 .rec-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.rec-icon svg { width: 16px; height: 16px; }
+.rec-icon svg, .rec-icon .glyph-img { width: 20px; height: 20px; object-fit: contain; }
 
-.priority-icon-high { background: #f2b8b8; color: #a92c2c; }
-.priority-icon-moderate { background: #f7d999; color: #8a5a10; }
+.priority-icon-high { background: linear-gradient(135deg, #f04b34, #f77b68, #ffab9c); color: #fff; }
+.priority-icon-moderate { background: linear-gradient(135deg, #f5942f, #faad4f, #ffc670); color: #fff; }
 
 .rec-text-col { display: flex; flex-direction: column; gap: 2px; }
 .rec-text { font-size: 13px; font-weight: 600; color: #1a1a2e; }
-.rec-priority { font-size: 10.5px; font-weight: 700; }
+.rec-priority { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; }
 .priority-text-high { color: #c83d3d; }
-.priority-text-moderate { color: #b7791f; }
+.priority-text-moderate { color: #c68e3f; }
+
+.priority-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.priority-dot-high { background: linear-gradient(135deg, #ff8686, #f43333); }
+.priority-dot-moderate { background: linear-gradient(135deg, #ffb886, #f47033); border: 1px solid rgba(0, 0, 0, 0.06); }
 
 /* ── Side cards ── */
 .side-cards {
@@ -857,9 +918,9 @@ const RecommendationIcon = (props) => {
 }
 
 .improve-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
   background: linear-gradient(135deg, #a5c4f7 0%, #6594e4 100%);
   color: #fff;
   display: flex;
@@ -868,7 +929,7 @@ const RecommendationIcon = (props) => {
   flex-shrink: 0;
 }
 
-.improve-icon svg { width: 19px; height: 19px; }
+.improve-icon svg, .improve-icon .glyph-img { width: 23px; height: 23px; object-fit: contain; }
 
 .improve-text {
   display: flex;
@@ -879,7 +940,7 @@ const RecommendationIcon = (props) => {
 }
 
 .improve-text strong { font-size: 13.5px; color: #1a1a2e; }
-.improve-text span { font-size: 11.5px; color: #8b96ad; }
+.improve-text span { font-size: 11.5px; font-weight: 500; color: #8b96ad; }
 
 .improve-chevron {
   width: 16px;
@@ -891,24 +952,26 @@ const RecommendationIcon = (props) => {
 .progress-card {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  text-align: center;
   gap: 8px;
 }
 
 .progress-icon {
-  width: 40px;
-  height: 40px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
-  background: #eaf1ff;
-  color: #6594e4;
+  background: linear-gradient(135deg, #a5c4f7 0%, #6594e4 100%);
+  color: #fff;
+  margin-bottom: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.progress-icon svg { width: 20px; height: 20px; }
+.progress-icon svg, .progress-icon .glyph-img { width: 24px; height: 24px; object-fit: contain; }
 
-.progress-title { font-size: 14px; color: #1a1a2e; }
+.progress-title { font-size: 15px; font-weight: 700; color: #1a1a2e; }
 
 .progress-desc {
   font-size: 12px;
@@ -945,6 +1008,18 @@ const RecommendationIcon = (props) => {
   padding: 2px;
 }
 
+.link-underline {
+  border: none;
+  background: transparent;
+  color: #7c879e;
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 2px;
+}
+
 /* ── Toast ── */
 .toast {
   position: fixed;
@@ -975,5 +1050,6 @@ const RecommendationIcon = (props) => {
   .topbar-actions { width: 100%; }
   .btn-ghost { flex: 1; justify-content: center; }
   .status-card { padding: 24px 16px; }
+  .status-subtitle { white-space: normal; }
 }
 </style>
