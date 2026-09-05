@@ -9,7 +9,7 @@
       </header>
 
       <section class="today-card">
-        <div class="today-icon" :class="'risk-bg-' + latestRecord.risk">
+        <div class="today-icon" :class="riskIconBgClass(latestRecord.risk)">
           <RiskIcon :risk="latestRecord.risk" />
         </div>
         <div class="today-info">
@@ -23,6 +23,10 @@
         <div class="card-header">
           <h2 class="card-title">Voice Health Score</h2>
           <div class="pill-group">
+            <span
+              class="pill-indicator"
+              :style="{ transform: `translateX(${scoreRanges.indexOf(selectedScoreRange) * 100}%)` }"
+            ></span>
             <button
               v-for="range in scoreRanges"
               :key="range"
@@ -160,34 +164,41 @@
             <p v-if="!filteredRecords.length" class="record-empty">No records match these filters.</p>
           </div>
 
-          <div class="record-detail" v-if="selectedRecord">
-            <div class="detail-icon" :class="'risk-bg-' + selectedRecord.risk">
-              <RiskIcon :risk="selectedRecord.risk" />
-            </div>
-            <h3 class="detail-result" :class="'risk-text-' + selectedRecord.risk">{{ selectedRecord.resultLabel }}</h3>
-            <p class="detail-meta">{{ formatDate(selectedRecord.date) }} &middot; {{ selectedRecord.time }}</p>
+          <Transition name="detail-swap" mode="out-in">
+            <div class="record-detail" v-if="selectedRecord" :key="selectedRecord.id">
+              <div class="detail-icon" :class="riskIconBgClass(selectedRecord.risk)">
+                <RiskIcon :risk="selectedRecord.risk" />
+              </div>
+              <h3 class="detail-result" :class="'risk-text-' + selectedRecord.risk">{{ selectedRecord.resultLabel }}</h3>
+              <p class="detail-meta">{{ formatDate(selectedRecord.date) }} &middot; {{ selectedRecord.time }}</p>
 
-            <div class="metric-row">
-              <div v-for="metric in selectedRecord.metrics" :key="metric.label" class="metric-chip" :class="'risk-bg-' + metric.level">
-                <MetricIcon :kind="metric.kind" />
-                <strong class="metric-value" :class="'risk-text-' + metric.level">{{ metric.value }}</strong>
-                <span class="metric-label">{{ metric.label }}</span>
+              <div class="metric-row">
+                <div v-for="metric in selectedRecord.metrics" :key="metric.label" class="metric-chip" :class="'metric-bg-' + metric.level">
+                  <div class="metric-chip-icon" :class="'metric-icon-' + metric.level">
+                    <MetricIcon :kind="metric.kind" />
+                  </div>
+                  <strong class="metric-value" :class="'risk-text-' + metric.level">{{ metric.value }}</strong>
+                  <span class="metric-label">{{ metric.label }}</span>
+                </div>
+              </div>
+
+              <h4 class="rec-title">Recommendations</h4>
+              <div class="rec-list">
+                <div v-for="rec in selectedRecord.recommendations" :key="rec.text" class="rec-item" :class="'priority-bg-' + rec.priority">
+                  <span class="rec-icon" :class="'priority-icon-' + rec.priority">
+                    <RecommendationIcon :kind="rec.kind" />
+                  </span>
+                  <span class="rec-text-col">
+                    <span class="rec-text">{{ rec.text }}</span>
+                    <span class="rec-priority" :class="'priority-text-' + rec.priority">
+                      <span class="priority-dot" :class="'priority-dot-' + rec.priority"></span>
+                      {{ priorityLabel(rec.priority) }} Priority
+                    </span>
+                  </span>
+                </div>
               </div>
             </div>
-
-            <h4 class="rec-title">Recommendations</h4>
-            <div class="rec-list">
-              <div v-for="rec in selectedRecord.recommendations" :key="rec.text" class="rec-item" :class="'priority-bg-' + rec.priority">
-                <span class="rec-icon" :class="'priority-icon-' + rec.priority">
-                  <RecommendationIcon :kind="rec.kind" />
-                </span>
-                <span class="rec-text-col">
-                  <span class="rec-text">{{ rec.text }}</span>
-                  <span class="rec-priority" :class="'priority-text-' + rec.priority">{{ priorityLabel(rec.priority) }} Priority</span>
-                </span>
-              </div>
-            </div>
-          </div>
+          </Transition>
         </div>
       </section>
 
@@ -203,6 +214,13 @@ import { ref, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import Navbar from '@/components/NavBar.vue'
 import { supabase } from '@/utils/supabase'
+import CheckMarkIcon from '@/assets/icons/check_mark.png'
+import SparklesIcon from '@/assets/icons/Sparkles_1.png'
+import AudioWaveIcon from '@/assets/icons/audio_wave.png'
+import MuteIcon from '@/assets/icons/mute.png'
+import WaterIcon from '@/assets/icons/water.png'
+import AudioIcon from '@/assets/icons/audio.png'
+import MicrophoneIcon from '@/assets/icons/Microphone.png'
 
 const router = useRouter()
 const goHome = () => router.push('/')
@@ -215,7 +233,9 @@ onMounted(async () => {
   displayName.value = user?.user_metadata?.username || user?.email || 'there'
 })
 
-// ── Icons (inline, no extra assets needed) ─────────────────────────
+// ── Icons — same treatment as the Result Dashboard: real image assets
+// where the glyph doesn't need to recolor per state, inline SVG (currentColor)
+// where it does (moderate/high risk, and the priority-coded recommendations).
 const RiskIcon = (props) => {
   if (props.risk === 'high') {
     return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
@@ -228,32 +248,22 @@ const RiskIcon = (props) => {
       h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' })
     ])
   }
-  return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-    h('path', { d: 'm5 13 4 4L19 7', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
-  ])
+  return h('img', { src: CheckMarkIcon, alt: '', class: 'glyph-img' })
 }
 
 const MetricIcon = (props) => {
-  const paths = {
-    clarity: 'M4 12h2l2-6 3 12 2-8 2 4h5',
-    stability: 'M3 12h3l2-5 4 10 2-5h3l2 3',
-    hoarseness: 'M12 3a3 3 0 0 1 3 3v6a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3ZM6 11a6 6 0 0 0 12 0M12 19v2'
-  }
-  return h('svg', { viewBox: '0 0 24 24', fill: 'none', class: 'metric-icon-svg' }, [
-    h('path', { d: paths[props.kind], stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
-  ])
+  const images = { clarity: SparklesIcon, stability: AudioWaveIcon, hoarseness: MuteIcon }
+  return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
 }
 
 const RecommendationIcon = (props) => {
-  const paths = {
-    rest: 'M12 7v5l3 3M12 3a9 9 0 1 0 9 9',
-    water: 'M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z',
-    voice: 'M3 9v6h4l5 4V5L7 9H3ZM17 8a5 5 0 0 1 0 8m2.5-10.5a8 8 0 0 1 0 13',
-    warmup: 'M3 12h3l2-5 4 10 2-5h3l2 3'
+  if (props.kind === 'rest') {
+    return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+      h('path', { d: 'M12 7v5l3 3M12 3a9 9 0 1 0 9 9', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+    ])
   }
-  return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-    h('path', { d: paths[props.kind], stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
-  ])
+  const images = { water: WaterIcon, voice: AudioIcon, warmup: MicrophoneIcon }
+  return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
 }
 
 // ── Sample data (UI preview only — not wired to a backend yet) ─────
@@ -482,6 +492,10 @@ const selectedRecord = computed(
   () => filteredRecords.value.find((r) => r.id === selectedId.value) || filteredRecords.value[0] || null
 )
 
+function riskIconBgClass(risk) {
+  return risk === 'low' ? 'status-icon-healthy' : 'risk-bg-' + risk
+}
+
 function priorityLabel(priority) {
   return priority === 'high' ? 'High' : 'Moderate'
 }
@@ -588,10 +602,15 @@ function formatDate(date) {
 }
 
 .today-icon :deep(svg),
-.detail-icon :deep(svg) {
+.detail-icon :deep(svg),
+.today-icon :deep(.glyph-img),
+.detail-icon :deep(.glyph-img) {
   width: 22px;
   height: 22px;
+  object-fit: contain;
 }
+
+.status-icon-healthy { background: linear-gradient(135deg, #3fc987, #73d8a5, #a8e8c4); }
 
 .today-info {
   display: flex;
@@ -629,36 +648,48 @@ function formatDate(date) {
 
 /* ── Pills / filters ── */
 .pill-group {
+  position: relative;
   display: flex;
-  gap: 6px;
   background: #f4f7ff;
   padding: 4px;
   border-radius: 20px;
 }
 
+.pill-indicator {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / 3);
+  height: calc(100% - 8px);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 6px rgba(101, 148, 228, 0.25);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .pill-btn {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  white-space: nowrap;
   border: none;
   background: transparent;
-  padding: 7px 16px;
+  padding: 7px 10px;
   border-radius: 16px;
   font-family: 'Poppins', sans-serif;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 600;
   color: #6b7690;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  transition: color 0.2s;
 }
 
-.pill-btn.active {
-  background: #fff;
-  color: #6594e4;
-  box-shadow: 0 2px 6px rgba(101, 148, 228, 0.25);
-}
+.pill-btn.active { color: #6594e4; }
 
 /* ── Voice Health Score ── */
 .score-body {
   display: grid;
-  grid-template-columns: 1fr 160px;
+  grid-template-columns: 1fr 128px;
   gap: 20px;
   align-items: stretch;
 }
@@ -769,16 +800,21 @@ function formatDate(date) {
 }
 
 .stat-tile {
-  border-radius: 12px;
-  padding: 10px 12px;
+  flex: 1;
+  border-radius: 14px;
+  padding: 11px 12px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  flex: 1;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
 }
 
 .stat-number {
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 800;
   line-height: 1.1;
 }
@@ -788,19 +824,19 @@ function formatDate(date) {
   font-weight: 600;
 }
 
-.stat-total { background: #eaf1ff; }
+.stat-total { background: linear-gradient(135deg, #ffffff 3%, #f4f8ff 66%, #e5eeff 100%); }
 .stat-total .stat-number { color: #3d6fd1; }
 .stat-total .stat-label { color: #5778b2; }
 
-.stat-high { background: #fdeaea; }
+.stat-high { background: linear-gradient(135deg, #ffffff 3%, #fff4f4 66%, #ffe0e0 100%); }
 .stat-high .stat-number { color: #c83d3d; }
 .stat-high .stat-label { color: #c2694f; }
 
-.stat-moderate { background: #fff3dc; }
+.stat-moderate { background: linear-gradient(135deg, #ffffff 3%, #fffdf4 66%, #fff5e0 100%); }
 .stat-moderate .stat-number { color: #b7791f; }
 .stat-moderate .stat-label { color: #b3823f; }
 
-.stat-low { background: #e3f7ec; }
+.stat-low { background: linear-gradient(135deg, #ffffff 3%, #f1ffee 66%, #e0ffe0 100%); }
 .stat-low .stat-number { color: #1f9d5b; }
 .stat-low .stat-label { color: #3e9270; }
 
@@ -931,6 +967,8 @@ function formatDate(date) {
   display: grid;
   grid-template-columns: 220px 1fr;
   gap: 20px;
+  border-top: 1px solid #eef1f8;
+  padding-top: 18px;
 }
 
 .record-list {
@@ -1043,10 +1081,32 @@ function formatDate(date) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-.metric-icon-svg { width: 18px; height: 18px; }
+/* Same pale-gradient / dark-icon-square pairing as the Result Dashboard's
+   metric cards, just sized down to fit this compact chip layout. */
+.metric-bg-low { background: linear-gradient(135deg, #ffffff 3%, #f1ffee 66%, #e0ffe0 100%); }
+.metric-bg-moderate { background: linear-gradient(135deg, #ffffff 3%, #fffdf4 66%, #fff5e0 100%); }
+.metric-bg-high { background: linear-gradient(135deg, #ffffff 3%, #fff4f4 66%, #ffe0e0 100%); }
+
+.metric-chip-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.metric-chip-icon :deep(.glyph-img) { width: 18px; height: 18px; object-fit: contain; }
+
+.metric-icon-low { background: linear-gradient(135deg, #3fc987, #73d8a5, #a8e8c4); }
+.metric-icon-moderate { background: linear-gradient(135deg, #f5942f, #faad4f, #ffc670); }
+.metric-icon-high { background: linear-gradient(135deg, #f04b34, #f77b68, #ffab9c); }
 
 .metric-value { font-size: 13px; font-weight: 700; }
 
@@ -1080,23 +1140,27 @@ function formatDate(date) {
   text-align: left;
 }
 
-.priority-bg-high { background: #fdeaea; }
-.priority-bg-moderate { background: #fff3dc; }
+.priority-bg-high { background: #ffe5e0; }
+.priority-bg-moderate { background: #fff5e0; }
 
 .rec-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.rec-icon svg { width: 16px; height: 16px; }
+.rec-icon svg, .rec-icon :deep(.glyph-img) { width: 20px; height: 20px; object-fit: contain; }
 
-.priority-icon-high { background: #f2b8b8; color: #a92c2c; }
-.priority-icon-moderate { background: #f7d999; color: #8a5a10; }
+.priority-icon-high { background: linear-gradient(135deg, #f04b34, #f77b68, #ffab9c); color: #fff; }
+.priority-icon-moderate { background: linear-gradient(135deg, #f5942f, #faad4f, #ffc670); color: #fff; }
+
+.priority-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.priority-dot-high { background: linear-gradient(135deg, #ff8686, #f43333); }
+.priority-dot-moderate { background: linear-gradient(135deg, #ffb886, #f47033); border: 1px solid rgba(0, 0, 0, 0.06); }
 
 .rec-text-col {
   display: flex;
@@ -1110,9 +1174,9 @@ function formatDate(date) {
   color: #1a1a2e;
 }
 
-.rec-priority { font-size: 10.5px; font-weight: 700; }
+.rec-priority { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; }
 .priority-text-high { color: #c83d3d; }
-.priority-text-moderate { color: #b7791f; }
+.priority-text-moderate { color: #c68e3f; }
 
 .history-disclaimer {
   text-align: center;
@@ -1150,5 +1214,17 @@ function formatDate(date) {
   .history-container { padding: 24px 16px 48px; }
   .metric-row { grid-template-columns: 1fr; }
   .card { padding: 18px; }
+}
+
+/* ── Record detail swap transition ── */
+.detail-swap-enter-active, .detail-swap-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.detail-swap-enter-from { opacity: 0; transform: translateY(6px); }
+.detail-swap-leave-to { opacity: 0; transform: translateY(-6px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .detail-swap-enter-active, .detail-swap-leave-active { transition: opacity 0.12s ease; }
+  .detail-swap-enter-from, .detail-swap-leave-to { transform: none; }
 }
 </style>
