@@ -21,7 +21,7 @@
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Share
           </button>
-          <button class="btn-ghost" type="button" @click="exportResult">
+          <button class="btn-ghost" type="button" disabled title="Available in a future update">
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Export
           </button>
@@ -349,16 +349,6 @@ async function shareResult() {
   }
 }
 
-function exportResult() {
-  const blob = new Blob([summaryText()], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'vocasense-voice-analysis.txt'
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
 // ── Icons ────────────────────────────────────────────────────────────
 const StatusIcon = (props) => {
   if (props.level === 'high') {
@@ -401,7 +391,8 @@ const RecommendationIcon = (props) => {
     return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
   }
   return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-    h('path', { d: 'M12 7v5l3 3M12 3a9 9 0 1 0 9 9', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+    h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+    h('path', { d: 'M12 7v5l3 3', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
   ])
 }
 </script>
@@ -466,7 +457,7 @@ const RecommendationIcon = (props) => {
   transition: opacity 0.2s;
 }
 
-.btn-back:hover { opacity: 0.75; }
+.btn-back:hover { background: #f4f7ff; }
 
 .back-arrow { font-size: 16px; }
 
@@ -527,6 +518,15 @@ const RecommendationIcon = (props) => {
 
 .btn-ghost svg { width: 14px; height: 14px; }
 .btn-ghost:hover { background: #f4f7ff; }
+
+.btn-ghost:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  color: #8a94a8;
+  border-color: rgba(138, 148, 168, 0.25);
+}
+
+.btn-ghost:disabled:hover { background: #fff; }
 
 /* ── Disclaimer ── */
 .disclaimer-banner {
@@ -702,6 +702,12 @@ const RecommendationIcon = (props) => {
 .info-popover {
   position: absolute;
   top: calc(100% + 8px);
+  /* The info icon sits at the top-right of every card (.metric-card-top is
+     space-between), so anchoring here and opening leftward keeps the
+     popover inside the card in the common cases: every card on mobile
+     (single, near-full-width column) and the middle/last cards in the
+     desktop 3-col grid. Only the first card in that 3-col grid needs the
+     opposite anchor — see the min-width override below. */
   right: 0;
   width: 250px;
   background: #fff;
@@ -712,6 +718,16 @@ const RecommendationIcon = (props) => {
   z-index: 30;
   text-align: left;
   animation: popoverIn 0.16s ease;
+}
+
+/* Only in the 3-col grid (tablet/desktop) does the first card's icon sit
+   close enough to the screen's left edge that opening leftward (the
+   default) would overflow past it — flip that one card to open rightward. */
+@media (min-width: 781px) {
+  .metric-card:first-child .info-popover {
+    left: 0;
+    right: auto;
+  }
 }
 
 @keyframes popoverIn {
@@ -1041,8 +1057,10 @@ const RecommendationIcon = (props) => {
 /* ── Responsive ── */
 @media (max-width: 780px) {
   .bottom-grid { grid-template-columns: 1fr; }
-  .metric-grid { grid-template-columns: 1fr; }
-  .info-popover { left: 0; right: auto; }
+  .metric-grid { grid-template-columns: 1fr; gap: 10px; }
+  .metric-card { padding: 12px; gap: 6px; }
+  .metric-icon-square { width: 40px; height: 40px; border-radius: 12px; }
+  .metric-icon-square svg, .metric-icon-square .glyph-img { width: 22px; height: 22px; }
 }
 
 @media (max-width: 560px) {
