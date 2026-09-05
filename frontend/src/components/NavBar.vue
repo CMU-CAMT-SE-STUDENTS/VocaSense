@@ -8,7 +8,7 @@
 
       <!-- menu for Desktop -->
       <div class="nav-links desktop-only">
-        <a href="#" class="nav-link active" @click.prevent="handleScroll('top')">Home</a>
+        <a href="#" class="nav-link" :class="{ active: isHome }" @click.prevent="handleScroll('top')">Home</a>
         <a href="#how-it-works" class="nav-link" @click.prevent="handleScroll('how-it-works')">How it Works</a>
         <a v-if="!user" href="#" class="nav-link" @click.prevent="goToSignUp">Sign up</a>
       </div>
@@ -125,11 +125,14 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 
 const emit = defineEmits(['scroll-to'])
 const router = useRouter()
+const route = useRoute()
+
+const isHome = computed(() => route.path === '/')
 
 const isMenuOpen = ref(false)
 const isProfileMenuOpen = ref(false)
