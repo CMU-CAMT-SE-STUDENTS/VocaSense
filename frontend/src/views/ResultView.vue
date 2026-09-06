@@ -337,6 +337,24 @@ const recommendations = computed(() => {
     if (assessment.hoursSlept !== '' && !Number.isNaN(hoursSlept) && hoursSlept < 6 && !items.some((i) => i.kind === 'sleep')) {
       items.push({ kind: 'sleep', text: 'You reported less sleep than usual — try to rest more before your next recording', priority: 'moderate' })
     }
+
+    if (assessment.alcohol === 'yes' || assessment.smoked === 'yes') {
+      items.push({ kind: 'rest', text: 'Avoid alcohol and smoking before recording — they can affect your voice', priority: 'moderate' })
+    }
+
+    const glassesToday = Number(assessment.glassesToday)
+    if (assessment.glassesToday !== '' && !Number.isNaN(glassesToday) && glassesToday < 6 && !items.some((i) => i.kind === 'water')) {
+      items.push({ kind: 'water', text: 'You reported drinking less water than recommended today — try to increase your intake', priority: 'moderate' })
+    }
+
+    const voiceUse = assessment.regularVoiceUse || []
+    const environment = assessment.environment || []
+    if (
+      (voiceUse.includes('Shout or yell') || voiceUse.includes('Speak loudly') || environment.includes('Noisy')) &&
+      !items.some((i) => i.kind === 'voice')
+    ) {
+      items.push({ kind: 'voice', text: 'You reported shouting, speaking loudly, or a noisy environment — try to lower your volume', priority: 'moderate' })
+    }
   }
 
   return items.slice(0, 6)
