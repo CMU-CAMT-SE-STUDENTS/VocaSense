@@ -292,6 +292,20 @@ const selfAssessment = computed(() => {
   }
 })
 
+// The member's one-time baseline profile (smoking/alcohol history, daily
+// voice-use hours, home/work environment) — same key ImproveResultView.vue
+// reads/writes. Unlike the per-recording assessment, this isn't tied to any
+// one recording, so it has no session timestamp key.
+const LS_BASELINE_KEY = 'vocasense:baselineAnswers'
+const voiceBaseline = computed(() => {
+  try {
+    const raw = localStorage.getItem(LS_BASELINE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+})
+
 // Backend returns scores/conditions but no coaching copy, so recommendations
 // are derived client-side from the same conditions shown in the metric cards,
 // plus this recording's self-assessment answers (if the user submitted one) —
@@ -354,6 +368,34 @@ const recommendations = computed(() => {
       !items.some((i) => i.kind === 'voice')
     ) {
       items.push({ kind: 'voice', text: 'You reported shouting, speaking loudly, or a noisy environment — try to lower your volume', priority: 'moderate' })
+    }
+  }
+
+  // Baseline-derived tips are long-term risk factors, not about this specific
+  // recording, so each is worded as "your baseline shows..." to stay distinct
+  // from the acoustic- and assessment-based tips above rather than blending in
+  // unexplained (e.g. quietly lowering a threshold would look like the system
+  // mis-measured this recording).
+  const baseline = voiceBaseline.value
+  if (baseline) {
+    if (baseline.smokingStatus === 'current' || baseline.alcoholStatus === 'yes') {
+      items.push({ kind: 'rest', text: 'Your baseline shows regular smoking or alcohol use — both are long-term risk factors for vocal health', priority: 'moderate' })
+    }
+
+    const hoursVoiceHome = Number(baseline.hoursVoiceHome)
+    const hoursVoiceWork = Number(baseline.hoursVoiceWork)
+    const totalDailyVoiceHours = (Number.isNaN(hoursVoiceHome) ? 0 : hoursVoiceHome) + (Number.isNaN(hoursVoiceWork) ? 0 : hoursVoiceWork)
+    if (totalDailyVoiceHours >= 6) {
+      items.push({ kind: 'warmup', text: 'Your baseline shows heavy daily voice use — take short vocal breaks throughout the day', priority: 'moderate' })
+    }
+
+    const baselineVoiceUse = baseline.regularVoiceUse || []
+    const baselineEnvironment = [...(baseline.homeEnvironment || []), ...(baseline.workEnvironment || [])]
+    if (
+      (baselineVoiceUse.includes('Shout or yell') || baselineVoiceUse.includes('Speak loudly') || baselineEnvironment.includes('Noisy')) &&
+      !items.some((i) => i.kind === 'voice')
+    ) {
+      items.push({ kind: 'voice', text: 'Your baseline shows frequent loud speaking or noisy environments — these add up to long-term vocal strain', priority: 'moderate' })
     }
   }
 
