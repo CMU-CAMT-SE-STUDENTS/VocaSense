@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { supabase } from '@/utils/supabase'
 import HomeView from '../views/HomeView.vue'
 import SignUpView from '../views/SignUp.vue'
 import LoginView from '../views/LoginView.vue'
@@ -56,7 +57,8 @@ const router = createRouter({
     {
       path: '/history',
       name: 'history',
-      component: HistoryView
+      component: HistoryView,
+      meta: { requiresAuth: true }
     },
     {
       path: '/result',
@@ -64,6 +66,15 @@ const router = createRouter({
       component: ResultView
     }
   ]
+})
+
+// UC-12: History is a member-only page — the nav only links to it once
+// logged in, but this guard also blocks typing /history in directly.
+router.beforeEach(async (to) => {
+  if (!to.meta.requiresAuth) return true
+  const { data } = await supabase.auth.getSession()
+  if (!data.session) return { path: '/login' }
+  return true
 })
 
 export default router
