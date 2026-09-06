@@ -21,7 +21,18 @@
 
       <section class="card score-card">
         <div class="card-header">
-          <h2 class="card-title">Voice Health Score</h2>
+          <div class="title-with-info">
+            <h2 class="card-title">Voice Health Score</h2>
+            <div class="info-wrap" v-click-outside="() => (showScoreInfo = false)">
+              <button type="button" class="score-info-btn" @click="showScoreInfo = !showScoreInfo" aria-label="About Voice Health Score">
+                <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 11v5m0-8h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              </button>
+              <div v-if="showScoreInfo" class="score-info-popover">
+                <strong>Voice Health Score</strong>
+                <span>A composite score from 0–100 reflecting your overall vocal health for that session, based on your voice clarity, stability, and hoarseness. Higher is better.</span>
+              </div>
+            </div>
+          </div>
           <div class="pill-group">
             <span
               class="pill-indicator"
@@ -50,12 +61,31 @@
                     <stop offset="100%" stop-color="#6594E4" stop-opacity="0" />
                   </linearGradient>
                 </defs>
+                <rect
+                  v-for="band in riskBands"
+                  :key="band.level"
+                  x="0"
+                  :y="band.y"
+                  :width="CHART_W"
+                  :height="band.height"
+                  :fill="band.color"
+                />
                 <line v-for="line in gridLines" :key="line.label" x1="0" :y1="line.y" :x2="CHART_W" :y2="line.y" class="chart-grid" />
                 <path :d="chartAreaPath" class="chart-area" />
                 <path :d="chartLinePath" class="chart-line" />
-                <circle v-if="chartLastPoint" :cx="chartLastPoint.x" :cy="chartLastPoint.y" r="6" class="chart-dot-halo" />
-                <circle v-if="chartLastPoint" :cx="chartLastPoint.x" :cy="chartLastPoint.y" r="3.5" class="chart-dot" />
               </svg>
+              <!-- Markers are plain HTML circles positioned by %, not SVG <circle> elements:
+                   the SVG box can now be much wider than its 600:170 viewBox (see max-height
+                   cap above), and preserveAspectRatio="none" would squash SVG circles into
+                   flattened ellipses under that non-uniform scaling. -->
+              <span
+                v-for="(pt, i) in chartPointsPctList"
+                :key="i"
+                class="chart-point-marker"
+                :style="{ left: pt.left + '%', top: pt.top + '%' }"
+              ></span>
+              <span v-if="chartLastPoint" class="chart-dot-halo" :style="{ left: chartLastPointPct.left + '%', top: chartLastPointPct.top + '%' }"></span>
+              <span v-if="chartLastPoint" class="chart-dot" :style="{ left: chartLastPointPct.left + '%', top: chartLastPointPct.top + '%' }"></span>
               <div v-if="chartLastPoint" class="chart-value-pill" :style="{ left: chartLastPointPct.left + '%', top: chartLastPointPct.top + '%' }">
                 {{ chartLastPoint.score }}
               </div>
@@ -136,8 +166,8 @@
               </div>
             </div>
 
-            <button class="btn-export" type="button" @click="exportRecords">
-              <svg viewBox="0 0 24 24" fill="none" class="export-icon"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button type="button" class="btn-export" disabled title="Available in a future update">
+              <svg viewBox="0 0 24 24" fill="none" class="export-icon"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
               Export
             </button>
           </div>
@@ -259,7 +289,8 @@ const MetricIcon = (props) => {
 const RecommendationIcon = (props) => {
   if (props.kind === 'rest') {
     return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-      h('path', { d: 'M12 7v5l3 3M12 3a9 9 0 1 0 9 9', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+      h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+      h('path', { d: 'M12 7v5l3 3', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
     ])
   }
   const images = { water: WaterIcon, voice: AudioIcon, warmup: MicrophoneIcon }
@@ -373,15 +404,20 @@ function riskCount(risk) {
 const CHART_W = 600
 const CHART_H = 170
 const CHART_PAD = 16
+// No vertical padding: the risk bands and 0/50/100 labels must reach the
+// exact top/bottom edges of the chart box, or they read as floating/detached
+// from the axis numbers. Nothing clips the SVG, so a near-100 last point's
+// halo (r=6) can harmlessly extend a few px past the edge on rare high scores.
+const CHART_PAD_Y = 0
 
 function chartPoints() {
   const items = scoreFiltered.value
   if (items.length < 2) return null
   const usableW = CHART_W - CHART_PAD * 2
-  const usableH = CHART_H - CHART_PAD * 2
+  const usableH = CHART_H - CHART_PAD_Y * 2
   return items.map((rec, i) => {
     const x = CHART_PAD + (usableW * i) / (items.length - 1)
-    const y = CHART_PAD + usableH * (1 - rec.score / 100)
+    const y = CHART_PAD_Y + usableH * (1 - rec.score / 100)
     return { x, y, score: rec.score }
   })
 }
@@ -410,7 +446,7 @@ const chartLinePath = computed(() => smoothLinePath(chartPoints()))
 const chartAreaPath = computed(() => {
   const pts = chartPoints()
   if (!pts) return ''
-  const baseline = CHART_H - CHART_PAD
+  const baseline = CHART_H - CHART_PAD_Y
   return `${smoothLinePath(pts)} L${pts[pts.length - 1].x},${baseline} L${pts[0].x},${baseline} Z`
 })
 
@@ -419,15 +455,47 @@ const chartLastPoint = computed(() => {
   return pts ? pts[pts.length - 1] : null
 })
 
+// Every point except the last gets a plain marker — the last one keeps its
+// own halo + bigger dot + value pill so the most recent score stays the
+// clear focal point instead of all points competing for attention.
+// Expressed as % positions (not raw SVG coords) since these render as HTML
+// circles overlaid on the chart, not <circle> elements inside the SVG.
+const chartPointsPctList = computed(() => {
+  const pts = chartPoints()
+  if (!pts) return []
+  return pts.slice(0, -1).map((pt) => ({ left: (pt.x / CHART_W) * 100, top: (pt.y / CHART_H) * 100 }))
+})
+
+// Score-to-y uses the same mapping as gridLines below, so the bands line up
+// exactly with the 0/50/100 axis labels regardless of chart height.
+function scoreToY(score) {
+  const usableH = CHART_H - CHART_PAD_Y * 2
+  return CHART_PAD_Y + usableH * (1 - score / 100)
+}
+
+// Thresholds match the risk levels used everywhere else in the app (low ≥
+// 70, moderate 40–69, high < 40) — see the mock records' score/risk pairs.
+const riskBands = computed(() => {
+  const yTop = scoreToY(100)
+  const yLowBoundary = scoreToY(70)
+  const yModerateBoundary = scoreToY(40)
+  const yBottom = scoreToY(0)
+  return [
+    { level: 'low', y: yTop, height: yLowBoundary - yTop, color: 'rgba(34, 197, 94, 0.14)' },
+    { level: 'moderate', y: yLowBoundary, height: yModerateBoundary - yLowBoundary, color: 'rgba(245, 166, 35, 0.14)' },
+    { level: 'high', y: yModerateBoundary, height: yBottom - yModerateBoundary, color: 'rgba(239, 68, 68, 0.14)' }
+  ]
+})
+
 const chartLastPointPct = computed(() => {
   const p = chartLastPoint.value
   return p ? { left: (p.x / CHART_W) * 100, top: (p.y / CHART_H) * 100 } : { left: 0, top: 0 }
 })
 
 const gridLines = computed(() => {
-  const usableH = CHART_H - CHART_PAD * 2
+  const usableH = CHART_H - CHART_PAD_Y * 2
   return [100, 50, 0].map((v) => {
-    const y = CHART_PAD + usableH * (1 - v / 100)
+    const y = CHART_PAD_Y + usableH * (1 - v / 100)
     return { label: String(v), y, pct: (y / CHART_H) * 100 }
   })
 })
@@ -448,6 +516,7 @@ const riskFilterLabel = computed(
 )
 
 const openDropdown = ref(null) // 'date' | 'risk' | null
+const showScoreInfo = ref(false)
 const toggleDropdown = (name) => {
   openDropdown.value = openDropdown.value === name ? null : name
 }
@@ -498,18 +567,6 @@ function riskIconBgClass(risk) {
 
 function priorityLabel(priority) {
   return priority === 'high' ? 'High' : 'Moderate'
-}
-
-function exportRecords() {
-  const rows = filteredRecords.value.map((r) => `${formatDate(r.date)},${r.time},${r.risk},${r.resultLabel}`)
-  const csv = ['Date,Time,Risk,Result', ...rows].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'vocasense-voice-history.csv'
-  link.click()
-  URL.revokeObjectURL(url)
 }
 
 function formatDate(date) {
@@ -575,6 +632,45 @@ function formatDate(date) {
   gap: 12px;
   margin-bottom: 18px;
 }
+
+.title-with-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.info-wrap { position: relative; }
+
+.score-info-btn {
+  border: none;
+  background: transparent;
+  padding: 2px;
+  color: #00000055;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.score-info-btn:hover { color: #00000088; }
+.score-info-btn svg { width: 16px; height: 16px; }
+
+.score-info-popover {
+  position: absolute;
+  top: calc(100% + 20px);
+  left: 0;
+  z-index: 10;
+  width: 240px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 24px rgba(30, 41, 59, 0.14);
+  border: 1px solid rgba(101, 148, 228, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.score-info-popover strong { font-size: 12.5px; color: #1a1a2e; }
+.score-info-popover span { font-size: 11.5px; color: #6b7690; line-height: 1.5; }
 
 .card-title {
   font-size: 16px;
@@ -653,6 +749,11 @@ function formatDate(date) {
   background: #f4f7ff;
   padding: 4px;
   border-radius: 20px;
+  /* card-header's space-between only keeps this in the top-right corner
+     while it shares a row with the title; once .card-header wraps it onto
+     its own line at narrow widths, space-between has nothing left to push
+     against and it falls to the left instead — pin it right explicitly. */
+  margin-left: auto;
 }
 
 .pill-indicator {
@@ -691,6 +792,9 @@ function formatDate(date) {
   display: grid;
   grid-template-columns: 1fr 128px;
   gap: 20px;
+  /* Stretch so the chart box matches the stat-tiles column height. The SVG
+     itself now fills that height directly (height: 100%, see .chart-svg)
+     instead of deriving it from aspect-ratio, so there's no dead gap. */
   align-items: stretch;
 }
 
@@ -731,8 +835,14 @@ function formatDate(date) {
 
 .chart-svg {
   width: 100%;
-  height: auto;
-  aspect-ratio: 600 / 170;
+  /* Fills the height .chart-plot is stretched to (matching the stat-tiles
+     column, see .score-body) rather than deriving height from the 600:170
+     viewBox via aspect-ratio — that made the SVG's own box shorter than its
+     stretched container, leaving a dead gap with "0" floating below the
+     actual bands. Point markers are plain HTML circles (see chart-point-marker
+     etc.), not SVG <circle>s, so this non-uniform scaling can't squash them. */
+  height: 100%;
+  min-height: 150px;
   display: block;
 }
 
@@ -756,27 +866,50 @@ function formatDate(date) {
   filter: drop-shadow(0 3px 5px rgba(101, 148, 228, 0.35));
 }
 
+/* HTML circles (not SVG <circle>) positioned by % over .chart-plot, so they
+   stay perfectly round even though the SVG box beneath them can be stretched
+   to a non-600:170 aspect ratio (see max-height cap on .chart-svg above). */
+.chart-point-marker,
+.chart-dot-halo,
+.chart-dot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.chart-point-marker {
+  width: 9px;
+  height: 9px;
+  background: #fff;
+  border: 2px solid #4a7fdb;
+}
+
 .chart-dot-halo {
-  fill: rgba(101, 148, 228, 0.22);
+  width: 12px;
+  height: 12px;
+  background: rgba(101, 148, 228, 0.22);
 }
 
 .chart-dot {
-  fill: #6594e4;
-  stroke: #fff;
-  stroke-width: 1.5;
+  width: 8px;
+  height: 8px;
+  background: #6594e4;
+  border: 1.5px solid #fff;
 }
 
 .chart-value-pill {
   position: absolute;
   transform: translate(-50%, calc(-100% - 12px));
-  background: #4a7fdb;
-  color: #fff;
+  background: #eaf1ff;
+  color: #3d6fd1;
   font-size: 11px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   padding: 3px 9px;
   border-radius: 10px;
-  box-shadow: 0 4px 10px rgba(101, 148, 228, 0.4);
+  border: 1px solid rgba(101, 148, 228, 0.25);
+  box-shadow: 0 4px 10px rgba(101, 148, 228, 0.18);
   white-space: nowrap;
   pointer-events: none;
 }
@@ -846,6 +979,31 @@ function formatDate(date) {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* Matches .dropdown-trigger's shape/border exactly so it reads as one of the
+   same set of controls; always disabled, so no separate :disabled override
+   or "Coming soon" badge — the dimmed look plus the hover tooltip says enough. */
+.btn-export {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(101, 148, 228, 0.25);
+  background: #fff;
+  border-radius: 16px;
+  padding: 8px 14px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #8a94a8;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.export-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .dropdown {
@@ -942,26 +1100,6 @@ function formatDate(date) {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
-.btn-export {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid rgba(101, 148, 228, 0.25);
-  background: #fff;
-  border-radius: 16px;
-  padding: 8px 16px;
-  font-family: 'Poppins', sans-serif;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #6594e4;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-export:hover { background: #f4f7ff; }
-
-.export-icon { width: 14px; height: 14px; }
 
 .record-body {
   display: grid;
