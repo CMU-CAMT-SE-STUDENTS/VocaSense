@@ -3,6 +3,7 @@
     <Navbar @scroll-to="goHome" />
 
     <div class="history-container">
+      <template v-if="mockRecords.length">
       <header class="welcome-header">
         <h1 class="welcome-title">Welcome back, {{ displayName }}!</h1>
         <p class="welcome-date">{{ formatDate(latestRecord.date) }}</p>
@@ -235,6 +236,16 @@
       <p class="history-disclaimer">
         Sample data shown for preview &mdash; connect your account history to see real results here.
       </p>
+      </template>
+
+      <div v-else class="history-empty">
+        <div class="history-empty-icon">
+          <img src="@/assets/icons/history-svgrepo-com.svg" alt="" />
+        </div>
+        <h2 class="history-empty-title">No voice analysis history is available yet</h2>
+        <p class="history-empty-desc">Take your first voice test to start building your history.</p>
+        <button class="btn-primary" type="button" @click="router.push('/recording')">Take a Voice Test</button>
+      </div>
     </div>
   </div>
 </template>
@@ -375,7 +386,9 @@ const mockRecords = [
   }
 ]
 
-const latestRecord = mockRecords.reduce((a, b) => (b.date > a.date ? b : a))
+const latestRecord = mockRecords.length
+  ? mockRecords.reduce((a, b) => (b.date > a.date ? b : a))
+  : null
 
 // ── Voice Health Score card ─────────────────────────────────────────
 const scoreRanges = ['7 Days', '30 Days', 'All Time']
@@ -503,7 +516,7 @@ const gridLines = computed(() => {
 // ── Record List card ────────────────────────────────────────────────
 const dateFilter = ref('All Time')
 const riskFilter = ref('all')
-const selectedId = ref(latestRecord.id)
+const selectedId = ref(latestRecord?.id ?? null)
 
 const riskFilterOptions = [
   { value: 'all', label: 'All Risk' },
@@ -1322,6 +1335,64 @@ function formatDate(date) {
   font-weight: 500;
   color: #aaa;
   margin: 4px 0 0;
+}
+
+/* ── Empty state (UC-12 [2E]: no voice analysis records yet) ── */
+.history-empty {
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid rgba(101, 148, 228, 0.14);
+  box-shadow: 0 2px 14px rgba(101, 148, 228, 0.08);
+  padding: 56px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+}
+
+.history-empty-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #eaf1ff, #dbe7fb);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.history-empty-icon img {
+  width: 26px;
+  height: 26px;
+  opacity: 0.7;
+}
+
+.history-empty-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 0;
+}
+
+.history-empty-desc {
+  font-size: 13px;
+  font-weight: 500;
+  color: #8b96ad;
+  margin: 0 0 18px;
+  max-width: 320px;
+}
+
+.history-empty .btn-primary {
+  border: none;
+  background: linear-gradient(102deg, #95b9f7 8.63%, #6594e4 92.33%);
+  color: #fff;
+  border-radius: 14px;
+  padding: 12px 28px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* ── Responsive ── */
