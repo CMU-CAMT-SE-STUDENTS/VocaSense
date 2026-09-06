@@ -276,8 +276,27 @@ const vClickOutside = {
   }
 }
 
+// The per-recording self-assessment ("About This Recording") is stored under
+// the same sessionStorage timestamp key AnalysisView stamps on the result,
+// so this recording's answers (if submitted) can be looked up the same way
+// ImproveResultView.vue reads/writes them.
+function assessmentStorageKey(key) { return `vocasense:assessmentAnswers:${key}` }
+const selfAssessment = computed(() => {
+  const key = sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')
+  if (!key) return null
+  try {
+    const raw = localStorage.getItem(assessmentStorageKey(key))
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+})
+
 // Backend returns scores/conditions but no coaching copy, so recommendations
-// are derived client-side from the same conditions shown in the metric cards.
+// are derived client-side from the same conditions shown in the metric cards,
+// plus this recording's self-assessment answers (if the user submitted one) —
+// those can surface tips the acoustic analysis alone wouldn't catch, e.g. a
+// healthy-sounding recording where the user reported severe symptoms.
 const recommendations = computed(() => {
   if (!quality.value) return []
   const overall = quality.value.voice_quality.voice_condition
@@ -289,26 +308,38 @@ const recommendations = computed(() => {
   if (overall === 'healthy') {
     items.push({ kind: 'water', text: 'Keep drinking plenty of water throughout the day', priority: 'moderate' })
     items.push({ kind: 'warmup', text: 'Continue regular vocal warm-ups to stay in good shape', priority: 'moderate' })
-    return items
-  }
-
-  if (hoarse === 'high' || overall === 'warning') {
-    items.push({ kind: 'rest', text: 'Give your voice a rest for 2-3 hours', priority: 'high' })
-    items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'high' })
-    items.push({ kind: 'sleep', text: 'Get a full night of sleep to help your voice recover', priority: 'high' })
   } else {
-    items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'moderate' })
+    if (hoarse === 'high' || overall === 'warning') {
+      items.push({ kind: 'rest', text: 'Give your voice a rest for 2-3 hours', priority: 'high' })
+      items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'high' })
+    } else {
+      items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'moderate' })
+    }
+
+    if (stability !== 'stable') {
+      items.push({ kind: 'voice', text: 'Avoid shouting or speaking loudly', priority: 'moderate' })
+    }
+
+    if (clarity !== 'clear') {
+      items.push({ kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' })
+    }
   }
 
-  if (stability !== 'stable') {
-    items.push({ kind: 'voice', text: 'Avoid shouting or speaking loudly', priority: 'moderate' })
+  const assessment = selfAssessment.value
+  if (assessment) {
+    const severityScores = assessment.symptoms ? Object.values(assessment.symptoms).filter((v) => v !== null) : []
+    const maxSeverity = severityScores.length ? Math.max(...severityScores) : 0
+    if (maxSeverity >= 4) {
+      items.push({ kind: 'specialist', text: 'Your reported symptoms are severe — consider seeing a specialist if this continues', priority: 'high' })
+    }
+
+    const hoursSlept = Number(assessment.hoursSlept)
+    if (assessment.hoursSlept !== '' && !Number.isNaN(hoursSlept) && hoursSlept < 6 && !items.some((i) => i.kind === 'sleep')) {
+      items.push({ kind: 'sleep', text: 'You reported less sleep than usual — try to rest more before your next recording', priority: 'moderate' })
+    }
   }
 
-  if (clarity !== 'clear') {
-    items.push({ kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' })
-  }
-
-  return items.slice(0, 4)
+  return items.slice(0, 6)
 })
 
 // ── Share / Export ──────────────────────────────────────────────────
@@ -383,12 +414,18 @@ const MetricIcon = (props) => {
 // water/voice/warmup/sleep use white-glyph image assets (per-kind, fixed
 // asset regardless of priority) — the priority color-coding still comes
 // through via the square's own background color (see .priority-icon-*),
-// same pattern as the metric cards. "rest" has no matching asset yet, so it
-// stays inline SVG.
+// same pattern as the metric cards. "rest"/"specialist" have no matching
+// asset yet, so they stay inline SVG.
 const RecommendationIcon = (props) => {
   const images = { water: WaterIcon, voice: AudioIcon, warmup: MicrophoneIcon, sleep: SleepingBedIcon }
   if (images[props.kind]) {
     return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
+  }
+  if (props.kind === 'specialist') {
+    return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+      h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+      h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' })
+    ])
   }
   return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
     h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
