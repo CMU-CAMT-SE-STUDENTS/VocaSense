@@ -176,20 +176,24 @@
                         class="stepper-btn"
                         :disabled="Number(answers[q.key]) <= 0"
                         aria-label="Decrease"
-                        @click="stepNumber(q.key, -1)"
+                        @click="stepNumber(q.key, -1, q.max)"
                       >&minus;</button>
                       <input
                         type="number"
                         min="0"
+                        :max="q.max"
+                        inputmode="numeric"
                         class="number-input"
                         :placeholder="q.placeholder"
-                        v-model="answers[q.key]"
+                        :value="answers[q.key]"
+                        @input="sanitizeNumberInput(q.key, $event, q.max)"
                       />
                       <button
                         type="button"
                         class="stepper-btn"
+                        :disabled="q.max != null && Number(answers[q.key]) >= q.max"
                         aria-label="Increase"
-                        @click="stepNumber(q.key, 1)"
+                        @click="stepNumber(q.key, 1, q.max)"
                       >+</button>
                     </div>
 
@@ -346,20 +350,24 @@
                         class="stepper-btn"
                         :disabled="Number(baselineAnswers[q.key]) <= 0"
                         aria-label="Decrease"
-                        @click="stepBaselineNumber(q.key, -1)"
+                        @click="stepBaselineNumber(q.key, -1, q.max)"
                       >&minus;</button>
                       <input
                         type="number"
                         min="0"
+                        :max="q.max"
+                        inputmode="numeric"
                         class="number-input"
                         :placeholder="q.placeholder"
-                        v-model="baselineAnswers[q.key]"
+                        :value="baselineAnswers[q.key]"
+                        @input="sanitizeBaselineNumberInput(q.key, $event, q.max)"
                       />
                       <button
                         type="button"
                         class="stepper-btn"
+                        :disabled="q.max != null && Number(baselineAnswers[q.key]) >= q.max"
                         aria-label="Increase"
-                        @click="stepBaselineNumber(q.key, 1)"
+                        @click="stepBaselineNumber(q.key, 1, q.max)"
                       >+</button>
                     </div>
 
@@ -636,7 +644,7 @@ const sections = [
   {
     title: 'Water Intake',
     questions: [
-      { type: 'number', key: 'glassesToday', label: 'How many glasses of water have you had today?', placeholder: 'Enter number of glasses' },
+      { type: 'number', key: 'glassesToday', label: 'How many glasses of water have you had today?', placeholder: 'Enter number of glasses', max: 20 },
       {
         type: 'radio',
         key: 'recentWater',
@@ -655,7 +663,7 @@ const sections = [
   {
     title: 'Sleep',
     questions: [
-      { type: 'number', key: 'hoursSlept', label: 'How many hours did you sleep last night?', placeholder: 'Enter number of hours' }
+      { type: 'number', key: 'hoursSlept', label: 'How many hours did you sleep last night?', placeholder: 'Enter number of hours', max: 24 }
     ]
   },
   {
@@ -674,14 +682,14 @@ const sections = [
           'Strain or tense neck while speaking', 'Shout or yell', 'None of the above'
         ]
       },
-      { type: 'number', key: 'continuousMinutes', label: 'How many minutes did you use your voice continuously before recording?', placeholder: 'Enter number of minutes' },
+      { type: 'number', key: 'continuousMinutes', label: 'How many minutes did you use your voice continuously before recording?', placeholder: 'Enter number of minutes', max: 300 },
       {
         type: 'checkbox-group',
         key: 'environment',
         label: 'Environment before recording',
         hint: '(select all that apply)',
         exclusiveOption: 'None of the above',
-        options: ['Noisy', 'Dusty or polluted air', 'Air conditioning used regularly', 'None of the above']
+        options: ['Noisy', 'Dusty or polluted air', 'In an air-conditioned room', 'None of the above']
       }
     ]
   }
@@ -744,13 +752,30 @@ function toggleCheckbox(key, option, exclusiveOption) {
   toggleCheckboxIn(answers, key, option, exclusiveOption)
 }
 
-function stepNumberIn(target, key, delta) {
-  const next = Math.max(0, (Number(target[key]) || 0) + delta)
+function stepNumberIn(target, key, delta, max) {
+  let next = Math.max(0, (Number(target[key]) || 0) + delta)
+  if (max != null) next = Math.min(next, max)
   target[key] = String(next)
 }
 
-function stepNumber(key, delta) {
-  stepNumberIn(answers, key, delta)
+function stepNumber(key, delta, max) {
+  stepNumberIn(answers, key, delta, max)
+  sectionTouched.value = true
+}
+
+// Typed input can't be trusted to stay numeric — IME text entry (e.g. Thai)
+// slips past the browser's own type="number" filtering, and a bare `min`/
+// `max` attribute only marks the field :invalid without blocking the
+// keystroke. Strip anything non-digit and clamp in JS instead.
+function sanitizeNumberInputIn(target, key, event, max) {
+  let digits = event.target.value.replace(/[^0-9]/g, '')
+  if (digits && max != null) digits = String(Math.min(Number(digits), max))
+  target[key] = digits
+  event.target.value = digits
+}
+
+function sanitizeNumberInput(key, event, max) {
+  sanitizeNumberInputIn(answers, key, event, max)
   sectionTouched.value = true
 }
 
@@ -798,7 +823,7 @@ const baselineSections = [
           { value: 'prefer_not_say', label: 'Prefer not to say' }
         ]
       },
-      { type: 'number', key: 'age', label: 'Age', placeholder: 'Enter your age' },
+      { type: 'number', key: 'age', label: 'Age', placeholder: 'Enter your age', max: 120 },
       { type: 'text', key: 'occupation', label: 'Occupation', placeholder: 'Enter your occupation' }
     ]
   },
@@ -811,7 +836,7 @@ const baselineSections = [
         label: 'What best describes your home?',
         hint: '(select all that apply)',
         exclusiveOption: 'None of the above',
-        options: ['Noisy', 'Dusty or polluted air', 'Air conditioning used regularly', 'None of the above']
+        options: ['Noisy', 'Dusty or polluted air', 'In an air-conditioned room', 'None of the above']
       }
     ]
   },
@@ -824,7 +849,7 @@ const baselineSections = [
         label: 'What best describes your workplace or school?',
         hint: '(select all that apply)',
         exclusiveOption: 'None of the above',
-        options: ['Noisy', 'Dusty or polluted air', 'Air conditioning used regularly', 'None of the above']
+        options: ['Noisy', 'Dusty or polluted air', 'In an air-conditioned room', 'None of the above']
       }
     ]
   },
@@ -848,11 +873,11 @@ const baselineSections = [
     showIf: (a) => a.smokingStatus !== 'never',
     questions: (a) => a.smokingStatus === 'current'
       ? [
-          { type: 'number', key: 'cigarettesPerDay', label: 'On average, how many cigarettes do you smoke per day?', placeholder: 'Enter number of cigarettes' },
-          { type: 'number', key: 'yearsSmoking', label: 'How many years have you been smoking?', placeholder: 'Enter number of years' }
+          { type: 'number', key: 'cigarettesPerDay', label: 'On average, how many cigarettes do you smoke per day?', placeholder: 'Enter number of cigarettes', max: 200 },
+          { type: 'number', key: 'yearsSmoking', label: 'How many years have you been smoking?', placeholder: 'Enter number of years', max: 100 }
         ]
       : [
-          { type: 'number', key: 'yearsSinceQuitSmoking', label: 'How many years since you quit smoking?', placeholder: 'Enter number of years' }
+          { type: 'number', key: 'yearsSinceQuitSmoking', label: 'How many years since you quit smoking?', placeholder: 'Enter number of years', max: 100 }
         ]
   },
   {
@@ -875,18 +900,18 @@ const baselineSections = [
     showIf: (a) => a.alcoholStatus !== 'no',
     questions: (a) => a.alcoholStatus === 'yes'
       ? [
-          { type: 'number', key: 'drinksPerWeek', label: 'On average, how many drinks per week?', placeholder: 'Enter number of drinks' },
-          { type: 'number', key: 'drinksPerDay', label: 'On average, how many drinks per day?', placeholder: 'Enter number of drinks' },
-          { type: 'number', key: 'yearsDrinking', label: 'How many years have you been drinking?', placeholder: 'Enter number of years' }
+          { type: 'number', key: 'drinksPerWeek', label: 'On average, how many drinks per week?', placeholder: 'Enter number of drinks', max: 100 },
+          { type: 'number', key: 'drinksPerDay', label: 'On average, how many drinks per day?', placeholder: 'Enter number of drinks', max: 50 },
+          { type: 'number', key: 'yearsDrinking', label: 'How many years have you been drinking?', placeholder: 'Enter number of years', max: 100 }
         ]
       : [
-          { type: 'number', key: 'yearsSinceQuitDrinking', label: 'How many years since you quit drinking?', placeholder: 'Enter number of years' }
+          { type: 'number', key: 'yearsSinceQuitDrinking', label: 'How many years since you quit drinking?', placeholder: 'Enter number of years', max: 100 }
         ]
   },
   {
     title: 'Eating Behavior',
     questions: [
-      { type: 'number', key: 'glassesWaterPerDay', label: 'On average, how many glasses of water do you drink per day?', placeholder: 'Enter number of glasses' },
+      { type: 'number', key: 'glassesWaterPerDay', label: 'On average, how many glasses of water do you drink per day?', placeholder: 'Enter number of glasses', max: 20 },
       {
         type: 'checkbox-group',
         key: 'eatingHabits',
@@ -922,7 +947,7 @@ const baselineSections = [
   {
     title: 'Voice Usage at Home',
     questions: [
-      { type: 'number', key: 'hoursVoiceHome', label: 'On average, how many hours per day do you use your voice at home?', placeholder: 'Enter number of hours' },
+      { type: 'number', key: 'hoursVoiceHome', label: 'On average, how many hours per day do you use your voice at home?', placeholder: 'Enter number of hours', max: 24 },
       {
         type: 'checkbox-group',
         key: 'reasonsVoiceHome',
@@ -941,7 +966,7 @@ const baselineSections = [
   {
     title: 'Voice Usage at Work/School',
     questions: [
-      { type: 'number', key: 'hoursVoiceWork', label: 'On average, how many hours per day do you use your voice at work/school?', placeholder: 'Enter number of hours' },
+      { type: 'number', key: 'hoursVoiceWork', label: 'On average, how many hours per day do you use your voice at work/school?', placeholder: 'Enter number of hours', max: 24 },
       {
         type: 'checkbox-group',
         key: 'reasonsVoiceWork',
@@ -1021,8 +1046,13 @@ function toggleBaselineCheckbox(key, option, exclusiveOption) {
   toggleCheckboxIn(baselineAnswers, key, option, exclusiveOption)
 }
 
-function stepBaselineNumber(key, delta) {
-  stepNumberIn(baselineAnswers, key, delta)
+function stepBaselineNumber(key, delta, max) {
+  stepNumberIn(baselineAnswers, key, delta, max)
+  baselineSectionTouched.value = true
+}
+
+function sanitizeBaselineNumberInput(key, event, max) {
+  sanitizeNumberInputIn(baselineAnswers, key, event, max)
   baselineSectionTouched.value = true
 }
 
