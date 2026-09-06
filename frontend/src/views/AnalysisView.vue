@@ -74,12 +74,18 @@ const steps = ref([
 const STEP_DURATIONS = [1000, 1000, 1000, 1000]
 
 function runStep(index) {
-  if (index >= steps.value.length) {
-    router.push('/result')
+  if (index >= steps.value.length) return
+
+  const step = steps.value[index]
+
+  // The last step doesn't complete on a fixed timer like the others — it
+  // waits for the backend's analysis result to actually be ready, so a slow
+  // response can't get masked by a step that finishes before the data does.
+  if (index === steps.value.length - 1) {
+    runFinalStep(step)
     return
   }
 
-  const step = steps.value[index]
   step.status = 'active'
   step.progress = 0
 
@@ -102,6 +108,32 @@ function runStep(index) {
   }
 
   requestAnimationFrame(animate)
+}
+
+function waitForAnalysisResult() {
+  if (analysisResult.value) return Promise.resolve(analysisResult.value)
+  return new Promise((resolve) => {
+    const check = () => {
+      if (analysisResult.value) resolve(analysisResult.value)
+      else setTimeout(check, 100)
+    }
+    check()
+  })
+}
+
+function runFinalStep(step) {
+  // The backend call finishes before this step even starts (it's awaited
+  // earlier, in analyzePendingRecording), so waitForAnalysisResult() alone
+  // would resolve instantly and skip the step's animation entirely. Pairing
+  // it with a minimum visual duration keeps this step's pacing consistent
+  // with the others in the common case, while still genuinely waiting
+  // longer — instead of completing early — if the backend is ever slow.
+  const minDuration = new Promise((resolve) => setTimeout(resolve, 900))
+  const ready = Promise.all([waitForAnalysisResult(), minDuration]).then(([result]) => result)
+
+  runProcessingStep(step, ready).then(() => {
+    setTimeout(() => router.push('/result'), 300)
+  })
 }
 
 const rafMap = new Map()
