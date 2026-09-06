@@ -21,7 +21,7 @@
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Share
           </button>
-          <button class="btn-ghost" type="button" @click="exportResult">
+          <button class="btn-ghost" type="button" disabled title="Available in a future update">
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Export
           </button>
@@ -276,8 +276,27 @@ const vClickOutside = {
   }
 }
 
+// The per-recording self-assessment ("About This Recording") is stored under
+// the same sessionStorage timestamp key AnalysisView stamps on the result,
+// so this recording's answers (if submitted) can be looked up the same way
+// ImproveResultView.vue reads/writes them.
+function assessmentStorageKey(key) { return `vocasense:assessmentAnswers:${key}` }
+const selfAssessment = computed(() => {
+  const key = sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')
+  if (!key) return null
+  try {
+    const raw = localStorage.getItem(assessmentStorageKey(key))
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+})
+
 // Backend returns scores/conditions but no coaching copy, so recommendations
-// are derived client-side from the same conditions shown in the metric cards.
+// are derived client-side from the same conditions shown in the metric cards,
+// plus this recording's self-assessment answers (if the user submitted one) —
+// those can surface tips the acoustic analysis alone wouldn't catch, e.g. a
+// healthy-sounding recording where the user reported severe symptoms.
 const recommendations = computed(() => {
   if (!quality.value) return []
   const overall = quality.value.voice_quality.voice_condition
@@ -289,26 +308,38 @@ const recommendations = computed(() => {
   if (overall === 'healthy') {
     items.push({ kind: 'water', text: 'Keep drinking plenty of water throughout the day', priority: 'moderate' })
     items.push({ kind: 'warmup', text: 'Continue regular vocal warm-ups to stay in good shape', priority: 'moderate' })
-    return items
-  }
-
-  if (hoarse === 'high' || overall === 'warning') {
-    items.push({ kind: 'rest', text: 'Give your voice a rest for 2-3 hours', priority: 'high' })
-    items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'high' })
-    items.push({ kind: 'sleep', text: 'Get a full night of sleep to help your voice recover', priority: 'high' })
   } else {
-    items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'moderate' })
+    if (hoarse === 'high' || overall === 'warning') {
+      items.push({ kind: 'rest', text: 'Give your voice a rest for 2-3 hours', priority: 'high' })
+      items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'high' })
+    } else {
+      items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'moderate' })
+    }
+
+    if (stability !== 'stable') {
+      items.push({ kind: 'voice', text: 'Avoid shouting or speaking loudly', priority: 'moderate' })
+    }
+
+    if (clarity !== 'clear') {
+      items.push({ kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' })
+    }
   }
 
-  if (stability !== 'stable') {
-    items.push({ kind: 'voice', text: 'Avoid shouting or speaking loudly', priority: 'moderate' })
+  const assessment = selfAssessment.value
+  if (assessment) {
+    const severityScores = assessment.symptoms ? Object.values(assessment.symptoms).filter((v) => v !== null) : []
+    const maxSeverity = severityScores.length ? Math.max(...severityScores) : 0
+    if (maxSeverity >= 4) {
+      items.push({ kind: 'specialist', text: 'Your reported symptoms are severe — consider seeing a specialist if this continues', priority: 'high' })
+    }
+
+    const hoursSlept = Number(assessment.hoursSlept)
+    if (assessment.hoursSlept !== '' && !Number.isNaN(hoursSlept) && hoursSlept < 6 && !items.some((i) => i.kind === 'sleep')) {
+      items.push({ kind: 'sleep', text: 'You reported less sleep than usual — try to rest more before your next recording', priority: 'moderate' })
+    }
   }
 
-  if (clarity !== 'clear') {
-    items.push({ kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' })
-  }
-
-  return items.slice(0, 4)
+  return items.slice(0, 6)
 })
 
 // ── Share / Export ──────────────────────────────────────────────────
@@ -349,16 +380,6 @@ async function shareResult() {
   }
 }
 
-function exportResult() {
-  const blob = new Blob([summaryText()], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'vocasense-voice-analysis.txt'
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
 // ── Icons ────────────────────────────────────────────────────────────
 const StatusIcon = (props) => {
   if (props.level === 'high') {
@@ -393,15 +414,22 @@ const MetricIcon = (props) => {
 // water/voice/warmup/sleep use white-glyph image assets (per-kind, fixed
 // asset regardless of priority) — the priority color-coding still comes
 // through via the square's own background color (see .priority-icon-*),
-// same pattern as the metric cards. "rest" has no matching asset yet, so it
-// stays inline SVG.
+// same pattern as the metric cards. "rest"/"specialist" have no matching
+// asset yet, so they stay inline SVG.
 const RecommendationIcon = (props) => {
   const images = { water: WaterIcon, voice: AudioIcon, warmup: MicrophoneIcon, sleep: SleepingBedIcon }
   if (images[props.kind]) {
     return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
   }
+  if (props.kind === 'specialist') {
+    return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+      h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+      h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' })
+    ])
+  }
   return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-    h('path', { d: 'M12 7v5l3 3M12 3a9 9 0 1 0 9 9', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+    h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+    h('path', { d: 'M12 7v5l3 3', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
   ])
 }
 </script>
@@ -466,7 +494,7 @@ const RecommendationIcon = (props) => {
   transition: opacity 0.2s;
 }
 
-.btn-back:hover { opacity: 0.75; }
+.btn-back:hover { background: #f4f7ff; }
 
 .back-arrow { font-size: 16px; }
 
@@ -527,6 +555,15 @@ const RecommendationIcon = (props) => {
 
 .btn-ghost svg { width: 14px; height: 14px; }
 .btn-ghost:hover { background: #f4f7ff; }
+
+.btn-ghost:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  color: #8a94a8;
+  border-color: rgba(138, 148, 168, 0.25);
+}
+
+.btn-ghost:disabled:hover { background: #fff; }
 
 /* ── Disclaimer ── */
 .disclaimer-banner {
@@ -702,6 +739,12 @@ const RecommendationIcon = (props) => {
 .info-popover {
   position: absolute;
   top: calc(100% + 8px);
+  /* The info icon sits at the top-right of every card (.metric-card-top is
+     space-between), so anchoring here and opening leftward keeps the
+     popover inside the card in the common cases: every card on mobile
+     (single, near-full-width column) and the middle/last cards in the
+     desktop 3-col grid. Only the first card in that 3-col grid needs the
+     opposite anchor — see the min-width override below. */
   right: 0;
   width: 250px;
   background: #fff;
@@ -712,6 +755,16 @@ const RecommendationIcon = (props) => {
   z-index: 30;
   text-align: left;
   animation: popoverIn 0.16s ease;
+}
+
+/* Only in the 3-col grid (tablet/desktop) does the first card's icon sit
+   close enough to the screen's left edge that opening leftward (the
+   default) would overflow past it — flip that one card to open rightward. */
+@media (min-width: 781px) {
+  .metric-card:first-child .info-popover {
+    left: 0;
+    right: auto;
+  }
 }
 
 @keyframes popoverIn {
@@ -1041,8 +1094,10 @@ const RecommendationIcon = (props) => {
 /* ── Responsive ── */
 @media (max-width: 780px) {
   .bottom-grid { grid-template-columns: 1fr; }
-  .metric-grid { grid-template-columns: 1fr; }
-  .info-popover { left: 0; right: auto; }
+  .metric-grid { grid-template-columns: 1fr; gap: 10px; }
+  .metric-card { padding: 12px; gap: 6px; }
+  .metric-icon-square { width: 40px; height: 40px; border-radius: 12px; }
+  .metric-icon-square svg, .metric-icon-square .glyph-img { width: 22px; height: 22px; }
 }
 
 @media (max-width: 560px) {
