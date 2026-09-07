@@ -49,40 +49,84 @@
       </div>
 
       <!-- Member: two entry points — the same per-recording wizard the guest
-           uses, plus the one-time baseline form -->
-      <div v-else class="member-card-grid">
-        <div class="card member-task-card">
-          <div class="task-card-head">
-            <div class="icon-wrap md"><img src="@/assets/icons/test_passed.png" alt="" class="task-icon-img" /></div>
-            <span v-if="assessmentDoneForRecording" class="task-badge task-badge-done">
-              <span aria-hidden="true">&#10003;</span> Answered
-            </span>
-            <span v-else class="task-badge task-badge-accent">Every recording &middot; 1 min</span>
+           uses, plus the one-time baseline form. "About This Recording" is
+           required to view results; the baseline only improves accuracy, so
+           it never blocks the results button. -->
+      <template v-else>
+        <div class="card guide-card">
+          <div class="guide-track">
+            <div class="guide-step" :class="{ done: assessmentDoneForRecording }">
+              <span class="guide-step-num">
+                <span v-if="assessmentDoneForRecording" aria-hidden="true">&#10003;</span>
+                <template v-else>1</template>
+              </span>
+              <span class="guide-step-label">About This Recording</span>
+              <span class="guide-step-tag guide-step-tag-required">Required</span>
+            </div>
+            <span class="guide-arrow" aria-hidden="true">&rarr;</span>
+            <div class="guide-step" :class="{ done: hasBaseline }">
+              <span class="guide-step-num">
+                <span v-if="hasBaseline" aria-hidden="true">&#10003;</span>
+                <template v-else>2</template>
+              </span>
+              <span class="guide-step-label">Set Your Baseline</span>
+              <span class="guide-step-tag">Optional</span>
+            </div>
+            <span class="guide-arrow" aria-hidden="true">&rarr;</span>
+            <div class="guide-step" :class="{ done: assessmentDoneForRecording }">
+              <span class="guide-step-num">3</span>
+              <span class="guide-step-label">View Your Result</span>
+            </div>
           </div>
-          <h3 class="task-title">About This Recording</h3>
-          <p class="task-desc">A rough morning could be bad sleep, or something more. This tells us which.</p>
-          <button class="btn-primary sm" type="button" @click="openAssessment">
-            <template v-if="assessmentDoneForRecording">Edit your answers <span aria-hidden="true">&rarr;</span></template>
-            <template v-else>Answer for this recording <span aria-hidden="true">&rarr;</span></template>
-          </button>
+
+          <p class="guide-text">
+            <template v-if="!assessmentDoneForRecording">&ldquo;About This Recording&rdquo; is required before you can view your result.</template>
+            <template v-else-if="!hasBaseline">You're set &mdash; view your result now, or set your baseline (optional) for better accuracy.</template>
+            <template v-else>Both forms are done &mdash; your result is ready to view.</template>
+          </p>
         </div>
 
-        <div class="card member-task-card">
-          <div class="task-card-head">
-            <div class="icon-wrap md icon-wrap-muted"><img src="@/assets/icons/user.png" alt="" class="task-icon-img" /></div>
-            <span v-if="hasBaseline" class="task-badge task-badge-done">
-              <span aria-hidden="true">&#10003;</span> Set
-            </span>
-            <span v-else class="task-badge">Once &middot; 3 min</span>
+        <div class="member-card-grid">
+          <div class="card member-task-card">
+            <div class="task-card-head">
+              <div class="icon-wrap md"><img src="@/assets/icons/test_passed.png" alt="" class="task-icon-img" /></div>
+              <span v-if="assessmentDoneForRecording" class="task-badge task-badge-done">
+                <span aria-hidden="true">&#10003;</span> Answered
+              </span>
+              <span v-else class="task-badge task-badge-accent">Every recording &middot; 1 min</span>
+            </div>
+            <h3 class="task-title"><span class="step-num-badge">1</span> About This Recording</h3>
+            <p class="task-desc">A rough morning could be bad sleep, or something more. This tells us which. <strong>Required</strong> to view your result.</p>
+            <button class="btn-primary sm" type="button" @click="openAssessment">
+              <template v-if="assessmentDoneForRecording">Edit your answers <span aria-hidden="true">&rarr;</span></template>
+              <template v-else>Answer for this recording <span aria-hidden="true">&rarr;</span></template>
+            </button>
           </div>
-          <h3 class="task-title">Set Your Baseline</h3>
-          <p class="task-desc">What counts as a normal voice differs per person. This sets yours.</p>
-          <button class="btn-outline" type="button" @click="openBaseline">
-            <template v-if="hasBaseline">Edit your baseline <span aria-hidden="true">&rarr;</span></template>
-            <template v-else>Set your baseline <span aria-hidden="true">&rarr;</span></template>
-          </button>
+
+          <div class="card member-task-card">
+            <div class="task-card-head">
+              <div class="icon-wrap md icon-wrap-muted"><img src="@/assets/icons/user.png" alt="" class="task-icon-img" /></div>
+              <span v-if="hasBaseline" class="task-badge task-badge-done">
+                <span aria-hidden="true">&#10003;</span> Set
+              </span>
+              <span v-else class="task-badge">Once &middot; 3 min</span>
+            </div>
+            <h3 class="task-title"><span class="step-num-badge">2</span> Set Your Baseline</h3>
+            <p class="task-desc">What counts as a normal voice differs per person. Optional, but improves accuracy.</p>
+            <button class="btn-outline" type="button" @click="openBaseline">
+              <template v-if="hasBaseline">Edit your baseline <span aria-hidden="true">&rarr;</span></template>
+              <template v-else>Set your baseline <span aria-hidden="true">&rarr;</span></template>
+            </button>
+          </div>
         </div>
-      </div>
+
+        <button v-if="assessmentDoneForRecording" class="btn-primary result-cta" type="button" @click="router.push('/result')">
+          View My Results <span aria-hidden="true">&rarr;</span>
+        </button>
+        <p v-if="assessmentDoneForRecording && !hasBaseline" class="result-cta-hint">
+          Tip: setting your baseline is optional, but makes your results more accurate.
+        </p>
+      </template>
       </div>
     </template>
 
@@ -223,7 +267,7 @@
                         <thead>
                           <tr>
                             <th class="symptom-col">Symptom</th>
-                            <th v-for="n in 6" :key="n">{{ n - 1 }}</th>
+                            <th v-for="n in 6" :key="n" :style="{ color: severityColor(n - 1) }">{{ n - 1 }}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -234,6 +278,7 @@
                                 type="radio"
                                 :name="q.key + '-' + item"
                                 :value="n - 1"
+                                :style="{ '--level-color': severityColor(n - 1) }"
                                 v-model="answers[q.key][item]"
                               />
                             </td>
@@ -243,6 +288,10 @@
                     </div>
                   </div>
                 </div>
+
+                <p v-if="assessmentSaveError" class="save-error-banner">
+                  Something went wrong saving your answers. Check your connection and try again.
+                </p>
 
                 <div class="nav-row">
                   <button class="btn-outline" type="button" @click="goBack">
@@ -402,6 +451,10 @@
                   </div>
                 </div>
 
+                <p v-if="baselineSaveError" class="save-error-banner">
+                  Something went wrong saving your baseline. Check your connection and try again.
+                </p>
+
                 <div class="nav-row">
                   <button class="btn-outline" type="button" @click="baselineGoBack">
                     <span aria-hidden="true">&larr;</span> Back
@@ -409,7 +462,7 @@
                   <button v-if="baselineStep < visibleBaselineSections.length" class="btn-primary sm" type="button" :disabled="!isBaselineSectionComplete" @click="baselineNext">
                     Next <span aria-hidden="true">&rarr;</span>
                   </button>
-                  <button v-else class="btn-primary sm" type="button" :disabled="!isBaselineSectionComplete" @click="baselineNext">Submit</button>
+                  <button v-else class="btn-primary sm" type="button" :disabled="!isBaselineSectionComplete" @click="baselineNext">Save</button>
                 </div>
               </template>
             </div>
@@ -461,12 +514,25 @@ function loadJSON(key) {
     return null
   }
 }
+// Deliberately lets storage errors (e.g. private-mode quota) propagate —
+// submitAssessment/baselineNext need to know a save failed so they can show
+// the retry UI required by UC-16/UC-18's "Save fails" exception flow.
 function saveJSON(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* storage unavailable, e.g. private mode */ }
+  localStorage.setItem(key, JSON.stringify(value))
 }
 
 const hasBaseline = ref(false)
 const assessmentDoneForRecording = ref(false)
+const assessmentSaveError = ref(false)
+const baselineSaveError = ref(false)
+const userId = ref(null)
+
+// Strips Vue reactivity before handing an object to Supabase (JSONB column) —
+// a raw reactive proxy serializes fine via JSON.stringify, but this keeps the
+// payload a plain, inspectable object instead of relying on that implicitly.
+function toPlain(obj) {
+  return JSON.parse(JSON.stringify(obj))
+}
 
 watch(step, (next, prev) => {
   const toNum = (v) => (v === 'complete' ? 8 : v)
@@ -476,6 +542,7 @@ watch(step, (next, prev) => {
 onMounted(async () => {
   const { data } = await supabase.auth.getSession()
   isMember.value = !!data.session?.user
+  userId.value = data.session?.user?.id ?? null
 
   const savedBaseline = loadJSON(LS_BASELINE_KEY)
   if (savedBaseline) {
@@ -486,6 +553,31 @@ onMounted(async () => {
   if (savedAssessment) {
     Object.assign(answers, savedAssessment)
     assessmentDoneForRecording.value = true
+  }
+
+  // Supabase is the source of truth across devices when reachable — it
+  // overrides the local cache above rather than merging with it, so a member
+  // who last edited on another device sees that copy, not a stale local one.
+  if (userId.value) {
+    try {
+      const [{ data: remoteBaseline }, { data: remoteAssessment }] = await Promise.all([
+        supabase.from('voice_baselines').select('answers').eq('account_id', userId.value).maybeSingle(),
+        supabase.from('voice_assessments').select('answers')
+          .eq('account_id', userId.value).eq('recording_key', recordingKey.value).maybeSingle()
+      ])
+      if (remoteBaseline?.answers) {
+        Object.assign(baselineAnswers, remoteBaseline.answers)
+        hasBaseline.value = true
+        saveJSON(LS_BASELINE_KEY, baselineAnswers)
+      }
+      if (remoteAssessment?.answers) {
+        Object.assign(answers, remoteAssessment.answers)
+        assessmentDoneForRecording.value = true
+        saveJSON(assessmentStorageKey(recordingKey.value), answers)
+      }
+    } catch (err) {
+      console.error('Failed to load saved answers from Supabase', err)
+    }
   }
 
   loading.value = false
@@ -586,6 +678,13 @@ const recordingLabel = computed(() => {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) +
     ', ' + date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 })
+
+// 0 = no symptoms (green) through 5 = very severe (red), so the scale reads
+// as a danger gradient instead of six visually-equal options.
+const SEVERITY_COLORS = ['#22c55e', '#84cc16', '#cddc39', '#eab308', '#f97316', '#ef4444']
+function severityColor(level) {
+  return SEVERITY_COLORS[level]
+}
 
 function yesNo(key, label) {
   return { type: 'radio', key, label, options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] }
@@ -712,7 +811,7 @@ const isSectionComplete = computed(() =>
 // section — showing them on a blank, untouched section reads as an error
 // before anyone did anything wrong.
 const sectionTouched = ref(false)
-watch(step, () => { sectionTouched.value = false })
+watch(step, () => { sectionTouched.value = false; assessmentSaveError.value = false })
 
 function createInitialAnswers() {
   const initial = {}
@@ -784,10 +883,26 @@ function goBack() {
   else requestClose()
 }
 
-function submitAssessment() {
-  saveJSON(assessmentStorageKey(recordingKey.value), answers)
-  assessmentDoneForRecording.value = true
-  step.value = 'complete'
+async function submitAssessment() {
+  assessmentSaveError.value = false
+  try {
+    saveJSON(assessmentStorageKey(recordingKey.value), answers)
+    if (userId.value) {
+      await supabase.from('voice_assessments').upsert(
+        {
+          account_id: userId.value,
+          recording_key: recordingKey.value,
+          answers: toPlain(answers)
+        },
+        { onConflict: 'account_id,recording_key' }
+      )
+    }
+    assessmentDoneForRecording.value = true
+    step.value = 'complete'
+  } catch (err) {
+    console.error('Failed to save assessment', err)
+    assessmentSaveError.value = true
+  }
 }
 
 const privacyLines = [
@@ -972,11 +1087,12 @@ const baselineSections = [
         key: 'reasonsVoiceWork',
         label: 'Main reasons you use your voice at work/school',
         hint: '(select all that apply)',
+        exclusiveOption: 'No special voice use',
         otherKey: 'reasonsVoiceWorkOther',
         options: [
           'Teaching', 'Meetings', 'Presenting', 'Answering customer calls', 'Selling products',
           'Talking with customers or clients', 'General conversation', 'Singing', 'Voice acting/dubbing',
-          'Live streaming', 'Recording audio or making content', 'Attending class'
+          'Live streaming', 'Recording audio or making content', 'Attending class', 'No special voice use'
         ]
       }
     ]
@@ -1031,7 +1147,7 @@ const isBaselineSectionComplete = computed(() =>
 )
 
 const baselineSectionTouched = ref(false)
-watch(baselineStep, () => { baselineSectionTouched.value = false })
+watch(baselineStep, () => { baselineSectionTouched.value = false; baselineSaveError.value = false })
 
 // If the user backs up and changes a branch answer (e.g. smoking status)
 // after already passing the now-removed detail section, keep the step
@@ -1061,14 +1177,27 @@ function baselineGoBack() {
   else requestClose()
 }
 
-function baselineNext() {
+async function baselineNext() {
   if (typeof baselineStep.value !== 'number') return
   if (baselineStep.value < visibleBaselineSections.value.length) {
     baselineStep.value++
-  } else {
+    return
+  }
+
+  baselineSaveError.value = false
+  try {
     saveJSON(LS_BASELINE_KEY, baselineAnswers)
+    if (userId.value) {
+      await supabase.from('voice_baselines').upsert(
+        { account_id: userId.value, answers: toPlain(baselineAnswers) },
+        { onConflict: 'account_id' }
+      )
+    }
     hasBaseline.value = true
     baselineStep.value = 'complete'
+  } catch (err) {
+    console.error('Failed to save baseline', err)
+    baselineSaveError.value = true
   }
 }
 
@@ -1255,6 +1384,84 @@ const InsightIcon = (props) => {
   margin: 10px 0 0;
 }
 
+/* ── Member: order guide card ── */
+.guide-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  padding: 22px 24px;
+}
+
+.guide-track {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.guide-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 92px;
+}
+
+.guide-step-num {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #eef1f8;
+  color: #8b96ad;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guide-step.done .guide-step-num {
+  background: linear-gradient(135deg, #a5c4f7 0%, #6594e4 100%);
+  color: #fff;
+}
+
+.guide-step-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #6b7690;
+  line-height: 1.3;
+}
+
+.guide-step.done .guide-step-label { color: #1a1a2e; }
+
+.guide-step-tag {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #8b96ad;
+  background: #eef1f8;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.guide-step-tag-required { color: #c07a1f; background: #fdf1e0; }
+
+.guide-arrow {
+  color: #c3cee3;
+  font-size: 16px;
+  margin-top: 6px;
+}
+
+.guide-text {
+  font-size: 12.5px;
+  color: #6b7690;
+  margin: 0;
+}
+
 /* ── Member: two-card layout ── */
 .member-card-grid {
   display: grid;
@@ -1301,7 +1508,21 @@ const InsightIcon = (props) => {
   gap: 4px;
 }
 
-.task-title { font-size: 17px; font-weight: 700; color: #1a1a2e; margin: 0; }
+.task-title { font-size: 17px; font-weight: 700; color: #1a1a2e; margin: 0; display: flex; align-items: center; gap: 8px; }
+
+.step-num-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #eaf1ff;
+  color: #3d6fd1;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 .task-desc { font-size: 13px; color: #8b96ad; line-height: 1.6; margin: 0; flex: 1; }
 
 .member-task-card .btn-primary.sm,
@@ -1309,6 +1530,19 @@ const InsightIcon = (props) => {
   width: 100%;
   justify-content: center;
   margin-top: 4px;
+}
+
+.result-cta {
+  margin-top: 20px;
+  padding: 18px;
+  font-size: 15px;
+}
+
+.result-cta-hint {
+  text-align: center;
+  font-size: 12px;
+  color: #8b96ad;
+  margin: 10px 0 0;
 }
 
 /* ── Buttons ── */
@@ -1616,7 +1850,39 @@ const InsightIcon = (props) => {
 .severity-table tbody tr:last-child td { border-bottom: none; }
 .severity-table tbody tr:last-child td:first-child { border-bottom-left-radius: 11px; }
 .severity-table tbody tr:last-child td:last-child { border-bottom-right-radius: 11px; }
-.severity-table input[type="radio"] { width: 15px; height: 15px; accent-color: #6594e4; cursor: pointer; }
+/* Custom-drawn circle instead of the native accent-color fill — the browser's
+   native colored radio has no ring around the fill and reads as a stray blob
+   rather than a selectable control, so appearance is fully replaced here. */
+.severity-table input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-radius: 50%;
+  border: 2px solid #d7deee;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.severity-table input[type="radio"]:hover { border-color: #b7c3dc; }
+
+.severity-table input[type="radio"]:checked {
+  border-color: var(--level-color, #6594e4);
+  background-color: var(--level-color, #6594e4);
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+.save-error-banner {
+  font-size: 12.5px;
+  color: #c83d3d;
+  background: #fdeaea;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
 
 /* ── Nav row ── */
 .nav-row {
