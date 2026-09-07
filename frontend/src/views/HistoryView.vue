@@ -2,7 +2,7 @@
   <div class="history-page">
     <Navbar @scroll-to="goHome" />
 
-    <div class="history-container">
+    <div class="history-container" :class="{ 'history-container-empty': !mockRecords.length }">
       <template v-if="mockRecords.length">
       <header class="welcome-header">
         <h1 class="welcome-title">Welcome back, {{ displayName }}!</h1>
@@ -81,8 +81,8 @@
                      cap above), and preserveAspectRatio="none" would squash SVG circles into
                      flattened ellipses under that non-uniform scaling. Each marker carries its
                      own tooltip showing the score and its color band, instead of a permanently-
-                     visible value pill — shown on hover (SRS-120) or on click, the latter
-                     persisting until an outside click (SRS-121), via v-click-outside below. -->
+                     visible value pill — shown on hover or on click, the latter
+                     persisting until an outside click, via v-click-outside below. -->
                 <div
                   v-for="(pt, i) in chartPointsFull"
                   :key="i"
@@ -283,10 +283,26 @@
 
       <div v-else class="history-empty">
         <div class="history-empty-icon">
-          <img src="@/assets/icons/history-svgrepo-com.svg" alt="" />
+          <svg viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 3.5-7.1M3 4v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <h2 class="history-empty-title">No voice analysis history is available yet</h2>
-        <p class="history-empty-desc">Take your first voice test to start building your history.</p>
+        <p class="history-empty-desc">Take your first voice test and this page will start tracking your progress over time.</p>
+
+        <ul class="history-empty-benefits">
+          <li>
+            <span class="history-empty-benefit-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M3 17l6-6 4 4 8-8M15 7h6v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            Track your Voice Health Score over time
+          </li>
+          <li>
+            <span class="history-empty-benefit-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-6 4 12 2-6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            See patterns across your recordings
+          </li>
+          <li>
+            <span class="history-empty-benefit-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M4 20V10m8 10V4m8 16v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            Compare sessions side by side
+          </li>
+        </ul>
+
         <button class="btn-primary" type="button" @click="router.push('/recording')">Take a Voice Test</button>
       </div>
     </div>
@@ -564,7 +580,7 @@ function chartPoints() {
   })
 }
 
-// Score-based color band per SRS-122: red < 50, yellow 50–69, green >= 70.
+// Score-based color band: red < 50, yellow 50–69, green >= 70.
 // This is independent of a record's overall `risk` field (which can factor
 // in more than the score alone) — the chart color must track the score value.
 function scoreBand(score) {
@@ -624,7 +640,7 @@ function riskLabel(risk) {
   return { low: 'Low Risk', moderate: 'Moderate Risk', high: 'High Risk' }[risk] || ''
 }
 
-// SRS-120/121: the score shows on hover (dismissed on mouse leave, handled by
+// The score shows on hover (dismissed on mouse leave, handled by
 // CSS :hover below) AND on click (persists until the member clicks outside).
 // Both can be true independently — hover works regardless of click state.
 const activeTooltipIndex = ref(null)
@@ -676,7 +692,7 @@ function scoreToY(score) {
   return CHART_PAD_Y + usableH * (1 - score / 100)
 }
 
-// Thresholds match SRS-122: green >= 70, yellow 50–69, red < 50.
+// Thresholds: green >= 70, yellow 50–69, red < 50.
 const riskBands = computed(() => {
   const yTop = scoreToY(100)
   const yLowBoundary = scoreToY(70)
@@ -1193,9 +1209,9 @@ function formatDate(date) {
   border: 2px solid #fff;
 }
 
-/* Tooltip: hidden by default, shown on hover (SRS-120, reverts on mouse
+/* Tooltip: hidden by default, shown on hover (reverts on mouse
    leave via plain CSS) or while its point is the click-activated one
-   (SRS-121, .is-active — persists until an outside click clears it). */
+   (.is-active — persists until an outside click clears it). */
 .chart-tooltip {
   position: absolute;
   bottom: calc(100% + 6px);
@@ -1341,6 +1357,13 @@ function formatDate(date) {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  /* Keeps the whole group flush right when .card-header wraps it onto its
+     own line (narrow screens) — without this it just piles up on the left,
+     since it's the sole item on that flex line at that point. On wide
+     screens this is a no-op: .card-header's space-between already pushes
+     it right, and an auto margin on the last/only item lands in the same
+     place free space would already put it. */
+  margin-left: auto;
 }
 
 /* Matches .dropdown-trigger's shape/border exactly so it reads as one of the
@@ -1754,49 +1777,96 @@ function formatDate(date) {
 }
 
 /* ── Empty state (UC-12 [2E]: no voice analysis records yet) ── */
+.history-container-empty {
+  flex: 1;
+  justify-content: center;
+  min-height: calc(100vh - 64px);
+}
+
 .history-empty {
   background: #fff;
-  border-radius: 18px;
+  border-radius: 20px;
   border: 1px solid rgba(101, 148, 228, 0.14);
-  box-shadow: 0 2px 14px rgba(101, 148, 228, 0.08);
-  padding: 56px 24px;
+  box-shadow: 0 4px 24px rgba(101, 148, 228, 0.1);
+  padding: 56px 32px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   gap: 6px;
+  max-width: 520px;
+  margin: 0 auto;
 }
 
 .history-empty-icon {
-  width: 56px;
-  height: 56px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #eaf1ff, #dbe7fb);
+  background: linear-gradient(135deg, #a5c4f7 0%, #6594e4 100%);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(101, 148, 228, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 12px;
+  margin-bottom: 18px;
 }
 
-.history-empty-icon img {
-  width: 26px;
-  height: 26px;
-  opacity: 0.7;
+.history-empty-icon svg {
+  width: 32px;
+  height: 32px;
 }
 
 .history-empty-title {
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 700;
   color: #1a1a2e;
   margin: 0;
 }
 
 .history-empty-desc {
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 500;
   color: #8b96ad;
-  margin: 0 0 18px;
-  max-width: 320px;
+  line-height: 1.6;
+  margin: 8px 0 22px;
+  max-width: 340px;
+}
+
+.history-empty-benefits {
+  list-style: none;
+  margin: 0 0 28px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-self: stretch;
+  text-align: left;
+}
+
+.history-empty-benefits li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #444;
+}
+
+.history-empty-benefit-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: #eaf1ff;
+  color: #6594e4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.history-empty-benefit-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .history-empty .btn-primary {
@@ -1804,12 +1874,14 @@ function formatDate(date) {
   background: linear-gradient(102deg, #95b9f7 8.63%, #6594e4 92.33%);
   color: #fff;
   border-radius: 14px;
-  padding: 12px 28px;
+  padding: 13px 32px;
   font-family: 'Poppins', sans-serif;
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
 }
+
+.history-empty .btn-primary:hover { opacity: 0.9; }
 
 /* ── Responsive ── */
 @media (max-width: 860px) {
