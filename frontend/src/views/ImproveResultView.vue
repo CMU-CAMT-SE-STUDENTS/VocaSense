@@ -97,9 +97,11 @@
             </div>
             <h3 class="task-title"><span class="step-num-badge">1</span> About This Recording</h3>
             <p class="task-desc">A rough morning could be bad sleep, or something more. This tells us which. <strong>Required</strong> to view your result.</p>
-            <button class="btn-primary sm" type="button" @click="openAssessment">
-              <template v-if="assessmentDoneForRecording">Edit your answers <span aria-hidden="true">&rarr;</span></template>
-              <template v-else>Answer for this recording <span aria-hidden="true">&rarr;</span></template>
+            <button v-if="assessmentDoneForRecording" class="btn-outline" type="button" @click="openAssessment">
+              Edit your answers <span aria-hidden="true">&rarr;</span>
+            </button>
+            <button v-else class="btn-primary sm" type="button" @click="openAssessment">
+              Answer for this recording <span aria-hidden="true">&rarr;</span>
             </button>
           </div>
 
@@ -169,9 +171,7 @@
                     </div>
                   </div>
 
-                  <button class="btn-primary" type="button" @click="router.push('/result')">
-                    See my updated result <span aria-hidden="true">&rarr;</span>
-                  </button>
+                  <button class="btn-primary" type="button" @click="closeForm">Close</button>
                   <button
                     v-if="isMember && !hasBaseline"
                     class="btn-outline complete-secondary-btn"
@@ -681,7 +681,7 @@ const recordingLabel = computed(() => {
 
 // 0 = no symptoms (green) through 5 = very severe (red), so the scale reads
 // as a danger gradient instead of six visually-equal options.
-const SEVERITY_COLORS = ['#22c55e', '#84cc16', '#cddc39', '#eab308', '#f97316', '#ef4444']
+const SEVERITY_COLORS = ['#22c55e', '#65a30d', '#ca8a04', '#eab308', '#f97316', '#ef4444']
 function severityColor(level) {
   return SEVERITY_COLORS[level]
 }
