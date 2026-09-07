@@ -17,10 +17,6 @@
         </div>
 
         <div class="topbar-actions">
-          <button class="btn-ghost" type="button" @click="shareResult">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Share
-          </button>
           <button class="btn-ghost" type="button" disabled title="Available in a future update">
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Export
@@ -34,7 +30,7 @@
       </div>
 
       <section class="status-card">
-        <div class="status-icon" :class="overallMeta.level === 'low' ? 'status-icon-healthy' : 'risk-bg-' + overallMeta.level">
+        <div class="status-icon" :class="'risk-bg-' + overallMeta.level">
           <StatusIcon :level="overallMeta.level" />
         </div>
         <span class="status-badge" :class="'risk-bg-' + overallMeta.level + ' risk-text-' + overallMeta.level">{{ overallMeta.badge }}</span>
@@ -127,7 +123,7 @@
             <svg viewBox="0 0 24 24" fill="none" class="improve-chevron"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
 
-          <div class="card progress-card">
+          <div class="card progress-card" v-if="!isMember">
             <div class="progress-icon">
               <img src="@/assets/icons/research.png" alt="" class="glyph-img" />
             </div>
@@ -144,10 +140,6 @@
       <p>No recent voice analysis was found.</p>
       <button class="btn-primary" type="button" @click="router.push('/recording')">Take a Voice Test</button>
     </div>
-
-    <transition name="toast">
-      <div v-if="toastMessage" class="toast">{{ toastMessage }}</div>
-    </transition>
   </div>
 </template>
 
@@ -160,13 +152,11 @@ import AudioIcon from '@/assets/icons/audio.png'
 import WaterIcon from '@/assets/icons/water.png'
 import MicrophoneIcon from '@/assets/icons/Microphone.png'
 import SleepingBedIcon from '@/assets/icons/sleeping_bed.png'
-import CheckMarkIcon from '@/assets/icons/check_mark.png'
 import SparklesIcon from '@/assets/icons/Sparkles_1.png'
 import MuteIcon from '@/assets/icons/mute.png'
 
 const router = useRouter()
 const result = ref(null)
-const toastMessage = ref('')
 const isMember = ref(false)
 
 onMounted(async () => {
@@ -402,58 +392,22 @@ const recommendations = computed(() => {
   return items.slice(0, 6)
 })
 
-// ── Share / Export ──────────────────────────────────────────────────
-function summaryText() {
-  const lines = [
-    'VocaSense — Voice Analysis Result',
-    formattedDate.value,
-    '',
-    overallMeta.value.badge,
-    ...metrics.value.map((m) => `${m.label}: ${m.value}`),
-    '',
-    'Recommendations:',
-    ...recommendations.value.map((r) => `- ${r.text} (${r.priority === 'high' ? 'High' : 'Moderate'} Priority)`)
-  ]
-  return lines.join('\n')
-}
-
-function showToast(message) {
-  toastMessage.value = message
-  setTimeout(() => { toastMessage.value = '' }, 2200)
-}
-
-async function shareResult() {
-  const text = summaryText()
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: 'VocaSense Voice Analysis', text })
-      return
-    } catch {
-      // user cancelled or share failed — fall through to clipboard
-    }
-  }
-  try {
-    await navigator.clipboard.writeText(text)
-    showToast('Result copied to clipboard')
-  } catch {
-    showToast('Could not copy result')
-  }
-}
-
 // ── Icons ────────────────────────────────────────────────────────────
 const StatusIcon = (props) => {
   if (props.level === 'high') {
+    return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+      h('path', { d: 'M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+    ])
+  }
+  if (props.level === 'moderate') {
     return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
       h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
       h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round' })
     ])
   }
-  if (props.level === 'moderate') {
-    return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-      h('path', { d: 'M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
-    ])
-  }
-  return h('img', { src: CheckMarkIcon, alt: '', class: 'glyph-img' })
+  return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+    h('path', { d: 'm5 13 4 4L19 7', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+  ])
 }
 
 // Image glyphs on a gradient square: sparkle for clarity, waveform for
@@ -666,8 +620,6 @@ const RecommendationIcon = (props) => {
 }
 
 .status-icon svg, .status-icon .glyph-img { width: 26px; height: 26px; object-fit: contain; }
-
-.status-icon-healthy { background: linear-gradient(135deg, #3fc987, #73d8a5, #a8e8c4); }
 
 .status-badge {
   padding: 5px 14px;
@@ -1132,24 +1084,6 @@ const RecommendationIcon = (props) => {
   cursor: pointer;
   padding: 2px;
 }
-
-/* ── Toast ── */
-.toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #1a1a2e;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 10px 18px;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-}
-
-.toast-enter-active, .toast-leave-active { transition: opacity 0.2s ease; }
-.toast-enter-from, .toast-leave-to { opacity: 0; }
 
 /* ── Responsive ── */
 @media (max-width: 780px) {
