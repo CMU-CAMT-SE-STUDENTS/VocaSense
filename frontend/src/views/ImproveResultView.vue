@@ -2378,9 +2378,35 @@ const InsightIcon = (props) => {
 
   /* Keep the close-confirmation as a small centered dialog, not a bottom sheet */
 
-  /* Step tracker stays one horizontal line (never wraps to two rows per
-     step) but scrolls sideways if the labels don't fit a narrow screen. */
-  .stepper-row { justify-content: flex-start; overflow-x: auto; padding-bottom: 2px; }
+  /* The horizontal step tracker doesn't fit 3 full labels on a narrow
+     screen without either wrapping each label to 2 lines or scrolling
+     sideways with the ends cut off — neither reads well. Stacking the
+     steps vertically instead shows all three labels in full, connected by
+     a thin line through the circles, with no scrolling needed. */
+  .stepper-row {
+    flex-direction: column;
+    align-items: stretch;
+    overflow-x: visible;
+    gap: 0;
+  }
+  .step {
+    position: relative;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 0;
+  }
+  .step-label { white-space: normal; font-size: 13.5px; }
+  .step-arrow { display: none; }
+  .step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 12px;
+    top: 33px;
+    bottom: -6px;
+    width: 2px;
+    background: #e3e9f5;
+  }
+  .step.done:not(:last-child)::after { background: #a5c4f7; }
   .dual-card-grid { grid-template-columns: 1fr; }
 }
 </style>
