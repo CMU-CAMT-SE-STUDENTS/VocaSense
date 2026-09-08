@@ -212,28 +212,35 @@
     <Teleport to="body">
       <div v-if="modalOpen" class="modal-backdrop">
         <div class="modal-panel" role="dialog" aria-modal="true" aria-label="Voice self-assessment questions">
-          <button class="modal-close" type="button" @click="requestClose" aria-label="Close">
-            <CloseIcon />
-          </button>
+          <!-- Sticks to the top of the scrollable panel: on a long section
+               (7 questions deep) the close button and section progress used
+               to scroll away with the content, so getting back to either
+               meant scrolling all the way back up first. -->
+          <div class="modal-sticky-head">
+            <button class="modal-close" type="button" @click="requestClose" aria-label="Close">
+              <CloseIcon />
+            </button>
 
-          <div class="card-head">
-            <div class="icon-wrap sm"><img src="@/assets/icons/test_passed.png" alt="" class="header-icon-img" /></div>
-            <div>
-              <strong>About This Recording</strong>
-              <span>Recording from {{ recordingLabel }}</span>
+            <div class="card-head">
+              <div class="icon-wrap sm"><img src="@/assets/icons/test_passed.png" alt="" class="header-icon-img" /></div>
+              <div>
+                <strong>About This Recording</strong>
+                <span>Recording from {{ recordingLabel }}</span>
+              </div>
             </div>
+
+            <div class="progress-row">
+              <span class="section-pill">Section {{ step === 'complete' ? sections.length : step }} of {{ sections.length }}</span>
+              <span class="section-name">{{ step === 'complete' ? 'Complete' : currentSection.title }}</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" :style="{ width: (step === 'complete' ? 100 : (step / sections.length) * 100) + '%' }"></div></div>
           </div>
 
+          <div class="modal-scroll-body">
           <Transition :name="direction > 0 ? 'slide-forward' : 'slide-back'" mode="out-in">
             <div :key="step" class="step-panel">
               <!-- complete -->
               <template v-if="step === 'complete'">
-                <div class="progress-row">
-                  <span class="section-pill">Section {{ sections.length }} of {{ sections.length }}</span>
-                  <span class="section-name">Complete</span>
-                </div>
-                <div class="progress-track"><div class="progress-fill" style="width: 100%"></div></div>
-
                 <div class="complete-body">
                   <div class="icon-wrap lg complete-icon-wrap">
                     <img src="@/assets/icons/test_passed.png" alt="" class="complete-icon-img" />
@@ -266,12 +273,6 @@
 
               <!-- section N -->
               <template v-else>
-                <div class="progress-row">
-                  <span class="section-pill">Section {{ step }} of {{ sections.length }}</span>
-                  <span class="section-name">{{ currentSection.title }}</span>
-                </div>
-                <div class="progress-track"><div class="progress-fill" :style="{ width: (step / sections.length) * 100 + '%' }"></div></div>
-
                 <div class="questions" @change="sectionTouched = true" @input="sectionTouched = true">
                   <div v-for="q in currentSection.questions" :key="q.key" class="question-block" :class="{ incomplete: sectionTouched && !isAnswered(q) }">
                     <p class="question-label">
@@ -383,6 +384,7 @@
               </template>
             </div>
           </Transition>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -391,18 +393,32 @@
     <Teleport to="body">
       <div v-if="baselineOpen" class="modal-backdrop">
         <div class="modal-panel" role="dialog" aria-modal="true" aria-label="Set your baseline questions">
-          <button class="modal-close" type="button" @click="requestClose" aria-label="Close">
-            <CloseIcon />
-          </button>
+          <!-- Sticks to the top of the scrollable panel, same as the
+               assessment wizard — but the progress row only makes sense once
+               past the intro card, since "intro" isn't a numbered section. -->
+          <div class="modal-sticky-head">
+            <button class="modal-close" type="button" @click="requestClose" aria-label="Close">
+              <CloseIcon />
+            </button>
 
-          <div class="card-head">
-            <div class="icon-wrap sm"><img src="@/assets/icons/user.png" alt="" class="header-icon-img" /></div>
-            <div>
-              <strong>Set Your Baseline</strong>
-              <span>One-time &middot; about 3 minutes</span>
+            <div class="card-head">
+              <div class="icon-wrap sm"><img src="@/assets/icons/user.png" alt="" class="header-icon-img" /></div>
+              <div>
+                <strong>Set Your Baseline</strong>
+                <span>One-time &middot; about 3 minutes</span>
+              </div>
             </div>
+
+            <template v-if="baselineStep !== 'intro'">
+              <div class="progress-row">
+                <span class="section-pill">Section {{ baselineStep === 'complete' ? visibleBaselineSections.length : baselineStep }} of {{ visibleBaselineSections.length }}</span>
+                <span class="section-name">{{ baselineStep === 'complete' ? 'Complete' : currentBaselineSection.title }}</span>
+              </div>
+              <div class="progress-track"><div class="progress-fill" :style="{ width: (baselineStep === 'complete' ? 100 : (baselineStep / visibleBaselineSections.length) * 100) + '%' }"></div></div>
+            </template>
           </div>
 
+          <div class="modal-scroll-body">
           <Transition :name="baselineDirection > 0 ? 'slide-forward' : 'slide-back'" mode="out-in">
             <div :key="baselineStep" class="step-panel">
               <!-- intro: shown once, first time setting a baseline, no matter
@@ -431,12 +447,6 @@
 
               <!-- complete -->
               <template v-else-if="baselineStep === 'complete'">
-                <div class="progress-row">
-                  <span class="section-pill">Section {{ visibleBaselineSections.length }} of {{ visibleBaselineSections.length }}</span>
-                  <span class="section-name">Complete</span>
-                </div>
-                <div class="progress-track"><div class="progress-fill" style="width: 100%"></div></div>
-
                 <div class="complete-body">
                   <div class="icon-wrap lg complete-icon-wrap">
                     <img src="@/assets/icons/user.png" alt="" class="complete-icon-img" />
@@ -459,12 +469,6 @@
 
               <!-- section N -->
               <template v-else>
-                <div class="progress-row">
-                  <span class="section-pill">Section {{ baselineStep }} of {{ visibleBaselineSections.length }}</span>
-                  <span class="section-name">{{ currentBaselineSection.title }}</span>
-                </div>
-                <div class="progress-track"><div class="progress-fill" :style="{ width: (baselineStep / visibleBaselineSections.length) * 100 + '%' }"></div></div>
-
                 <div class="questions" @change="baselineSectionTouched = true" @input="baselineSectionTouched = true">
                   <div v-for="q in currentBaselineQuestions" :key="q.key" class="question-block" :class="{ incomplete: baselineSectionTouched && !isBaselineAnswered(q) }">
                     <p class="question-label">
@@ -566,6 +570,7 @@
               </template>
             </div>
           </Transition>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -622,6 +627,7 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import { syncAccountScope } from '@/utils/accountScope'
+import { hasBaseline as sharedHasBaseline } from '@/utils/baselineStatus'
 
 const route = useRoute()
 const router = useRouter()
@@ -679,6 +685,7 @@ onMounted(async () => {
   if (savedBaseline) {
     Object.assign(baselineAnswers, savedBaseline)
     hasBaseline.value = true
+    sharedHasBaseline.value = true
   }
   const savedAssessment = loadJSON(assessmentStorageKey(recordingKey.value))
   if (savedAssessment) {
@@ -699,6 +706,7 @@ onMounted(async () => {
       if (remoteBaseline?.answers) {
         Object.assign(baselineAnswers, remoteBaseline.answers)
         hasBaseline.value = true
+        sharedHasBaseline.value = true
         saveJSON(LS_BASELINE_KEY, baselineAnswers)
       }
       if (remoteAssessment?.answers) {
@@ -748,10 +756,15 @@ function entryQuery() {
 }
 
 function openAssessment() {
+  // Also reachable from the result-warning modal's "Answer First" button —
+  // without closing it first, it stayed open on top of the wizard this just
+  // opened underneath it (both are teleported to <body>).
+  showResultWarning.value = false
   router.push({ path: '/improve-result', query: { ...entryQuery(), form: 'assessment' } })
 }
 
 function openBaseline() {
+  showResultWarning.value = false
   router.push({ path: '/improve-result', query: { ...entryQuery(), form: 'baseline' } })
 }
 
@@ -1111,7 +1124,7 @@ async function submitAssessment() {
   try {
     saveJSON(assessmentStorageKey(recordingKey.value), answers)
     if (userId.value) {
-      await supabase.from('voice_assessments').upsert(
+      const { error } = await supabase.from('voice_assessments').upsert(
         {
           account_id: userId.value,
           recording_key: recordingKey.value,
@@ -1119,6 +1132,7 @@ async function submitAssessment() {
         },
         { onConflict: 'account_id,recording_key' }
       )
+      if (error) throw error
     }
     assessmentDoneForRecording.value = true
     step.value = 'complete'
@@ -1412,12 +1426,20 @@ async function baselineNext() {
   try {
     saveJSON(LS_BASELINE_KEY, baselineAnswers)
     if (userId.value) {
-      await supabase.from('voice_baselines').upsert(
+      // Supabase doesn't throw on a query error by default — it resolves
+      // with { error } set, silently, so this has to check it explicitly.
+      // Without this, an RLS or network failure here would still show the
+      // "Your baseline is set!" screen while no row was actually saved,
+      // leaving the navbar's dot (which reads the real table) permanently
+      // stuck showing "not set" with nothing on screen explaining why.
+      const { error } = await supabase.from('voice_baselines').upsert(
         { account_id: userId.value, answers: toPlain(baselineAnswers) },
         { onConflict: 'account_id' }
       )
+      if (error) throw error
     }
     hasBaseline.value = true
+    sharedHasBaseline.value = true
     baselineStep.value = 'complete'
   } catch (err) {
     console.error('Failed to save baseline', err)
@@ -2194,7 +2216,14 @@ const InsightIcon = (props) => {
   background: #fff;
   border-radius: 22px;
   box-shadow: 0 20px 60px rgba(20, 30, 60, 0.3);
-  padding: 26px;
+  /* No padding here on purpose — the sticky head and the scrollable body
+     below carry their own, so the sticky head can sit flush against the
+     panel's actual top edge with nothing to bleed past. (A negative-margin
+     "bleed" was tried first so .modal-panel could keep uniform padding, but
+     it fought the panel's own border-radius clipping and left a sliver of
+     backdrop showing at the top corners once scrolled — this is simpler
+     and has no edge cases.) */
+  padding: 0;
   width: 100%;
   max-width: 620px;
   max-height: 88vh;
@@ -2205,6 +2234,31 @@ const InsightIcon = (props) => {
 @keyframes panelIn {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Pinned to the top of .modal-panel's own scroll area (not the page) — the
+   close button and section progress stay put while the questions below
+   scroll underneath, instead of scrolling away with them. Flush against the
+   panel's top/left/right edges since .modal-panel itself has no padding. */
+.modal-sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  padding: 20px 26px 14px;
+  border-radius: 22px 22px 0 0;
+}
+
+.modal-sticky-head .card-head {
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+.modal-sticky-head .progress-row { margin-bottom: 6px; }
+.modal-sticky-head .progress-track { margin-bottom: 0; }
+
+.modal-scroll-body {
+  padding: 0 26px 26px;
 }
 
 .modal-close {
@@ -2314,11 +2368,13 @@ const InsightIcon = (props) => {
 /* ── Responsive ── */
 @media (max-width: 560px) {
   .page-topbar { top: 16px; left: 16px; }
-  .card, .modal-panel { padding: 18px; }
+  .card { padding: 18px; }
   .nav-row { flex-direction: column-reverse; }
   .btn-outline, .btn-primary.sm { width: 100%; justify-content: center; }
   .modal-backdrop { padding: 0; align-items: flex-end; }
   .modal-panel { max-width: 100%; max-height: 92vh; border-radius: 22px 22px 0 0; }
+  .modal-sticky-head { padding: 16px 18px 12px; border-radius: 22px 22px 0 0; }
+  .modal-scroll-body { padding: 0 18px 18px; }
 
   /* Keep the close-confirmation as a small centered dialog, not a bottom sheet */
 

@@ -148,6 +148,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import { clearAccountScopedData } from '@/utils/accountScope'
+import { hasBaseline, refreshBaselineStatus } from '@/utils/baselineStatus'
 
 const emit = defineEmits(['scroll-to'])
 const router = useRouter()
@@ -158,10 +159,9 @@ const isMobileProfileMenuOpen = ref(false)
 const user = ref(null)
 // Quiet nudge only — no popup. A small dot on the avatar and next to "Set
 // Baseline" whenever the signed-in member hasn't set one yet; disappears the
-// moment it's set. Re-checked on login/logout and on every navigation, since
-// this navbar stays mounted across route changes and won't otherwise notice
-// a baseline saved on another page.
-const hasBaseline = ref(false)
+// moment it's set. `hasBaseline` is shared app-wide state (see
+// utils/baselineStatus.js) — ImproveResultView flips it the instant a save
+// succeeds, so this doesn't have to guess when to re-check.
 
 const username = computed(() => {
   if (!user.value) return ''
@@ -231,44 +231,14 @@ const handleLogout = async () => {
   router.push('/?loggedOut=true')
 }
 
-async function checkBaselineStatus() {
-  if (!user.value) {
-    hasBaseline.value = false
-    return
-  }
-  // Local cache first (instant, no flash on page load), Supabase confirms —
-  // same "remote is the source of truth" pattern as the baseline form itself.
-  try {
-    hasBaseline.value = !!localStorage.getItem('vocasense:baselineAnswers')
-  } catch {
-    hasBaseline.value = false
-  }
-  try {
-    const { data } = await supabase
-      .from('voice_baselines')
-      .select('account_id')
-      .eq('account_id', user.value.id)
-      .maybeSingle()
-    hasBaseline.value = !!data
-  } catch (err) {
-    console.error('Failed to check baseline status', err)
-  }
-}
-
 onMounted(async () => {
   const { data } = await supabase.auth.getSession()
   user.value = data.session?.user ?? null
-  await checkBaselineStatus()
+  await refreshBaselineStatus(user.value?.id)
 
   supabase.auth.onAuthStateChange((_event, session) => {
     user.value = session?.user ?? null
-    checkBaselineStatus()
-  })
-
-  // Catches "just set my baseline, navigated back" without needing an event
-  // bus — cheap since it's just a single-row existence check.
-  router.afterEach(() => {
-    checkBaselineStatus()
+    refreshBaselineStatus(user.value?.id)
   })
 })
 
