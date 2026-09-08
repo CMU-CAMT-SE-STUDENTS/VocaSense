@@ -68,9 +68,18 @@ const router = createRouter({
   ]
 })
 
-// UC-12: History is a member-only page — the nav only links to it once
-// logged in, but this guard also blocks typing /history in directly.
 router.beforeEach(async (to) => {
+  // UC-16 precondition: "About This Recording" answers a specific recording,
+  // so it requires one to exist. Scoped to ?form=assessment only — the bare
+  // page and ?form=baseline ("Set Your Baseline") stay reachable with no
+  // recording at all, since a member can set their baseline any time.
+  if (to.path === '/improve-result' && to.query.form === 'assessment') {
+    if (!sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')) {
+      return { path: '/recording', query: { reason: 'needs-recording' } }
+    }
+  }
+  // UC-12: History is a member-only page — the nav only links to it once
+  // logged in, but this guard also blocks typing /history in directly.
   if (!to.meta.requiresAuth) return true
   const { data } = await supabase.auth.getSession()
   if (!data.session) return { path: '/login' }

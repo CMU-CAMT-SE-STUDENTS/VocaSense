@@ -164,6 +164,15 @@
 
       <!-- DEFAULT (ready / not_ready / checking) -->
       <template v-else>
+        <!-- Redirected here to record before completing the self-assessment -->
+        <div v-if="showNeedsRecordingNotice" class="notice-card">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" class="notice-icon">
+            <circle cx="9" cy="9" r="8.5" stroke="#6594e4" />
+            <path d="M9 5v4M9 12v.5" stroke="#6594e4" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+          <p class="notice-text">Record your voice first &mdash; then you can answer the self-assessment for it.</p>
+        </div>
+
         <!-- Status badge above title -->
         <div class="status-badge" :class="statusClass">
           <span class="status-dot"></span>
@@ -346,11 +355,18 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter, onBeforeRouteLeave } from 'vue-router'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import sampleAudioSrc from '@/assets/audio/maonoNormal.mp3'
 import { setPendingVoiceAnalysisInput } from '@/utils/voiceAnalysisStore'
 
+const route = useRoute()
 const router = useRouter()
+
+// Set when redirected here because the self-assessment needs a recording
+// first (see the router guard in router/index.js). Read once on mount, then
+// stripped from the URL so a refresh doesn't keep re-showing it.
+const showNeedsRecordingNotice = ref(route.query.reason === 'needs-recording')
+if (showNeedsRecordingNotice.value) router.replace({ path: '/recording' })
 
 const AUDIO_CONSTRAINTS = {
   audio: {
@@ -1301,6 +1317,15 @@ onUnmounted(() => {
   justify-content: center; font-size: 13px; font-weight: 600; color: #6594e4; flex-shrink: 0;
 }
 .instr-text { font-size: 13px; font-weight: 500; color: #555; }
+
+/* ── Needs-recording notice card ── */
+.notice-card {
+  width: 100%; display: flex; align-items: flex-start; gap: 10px;
+  background: #eef2ff; border: 1px solid rgba(101, 148, 228, 0.35);
+  border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;
+}
+.notice-icon { flex-shrink: 0; margin-top: 1px; }
+.notice-text { font-size: 13px; font-weight: 500; color: #3d5a99; line-height: 1.55; }
 
 /* ── Noise-during-recording card ── */
 .noise-rec-card {

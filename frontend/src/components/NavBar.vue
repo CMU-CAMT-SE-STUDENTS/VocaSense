@@ -32,6 +32,14 @@
               <img src="@/assets/icons/history-svgrepo-com.svg" class="dropdown-icon" />
               Voice history
             </button>
+            <button class="btn-dropdown-item" @click="goToAssessment">
+              <svg class="dropdown-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.6"/>
+                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M9 12h6M9 16h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              Self-Assessment Form
+            </button>
             <hr class="dropdown-divider" />
             <button class="btn-dropdown-logout" @click="handleLogout">
               <img src="@/assets/icons/logout-svgrepo-com.svg" class="dropdown-icon icon-logout-red" />
@@ -73,6 +81,14 @@
             <button class="btn-dropdown-item" @click="goToHistory">
               <img src="@/assets/icons/history-svgrepo-com.svg" class="dropdown-icon" />
               Voice history
+            </button>
+            <button class="btn-dropdown-item" @click="goToAssessment">
+              <svg class="dropdown-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.6"/>
+                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M9 12h6M9 16h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              Self-Assessment Form
             </button>
             <hr class="dropdown-divider" />
             <button class="btn-dropdown-logout" @click="handleLogout">
@@ -153,6 +169,13 @@ const goToHistory = () => {
   closeProfileMenu()
   closeMobileProfileMenu()
   router.push('/history')
+}
+
+const goToAssessment = () => {
+  closeMenu()
+  closeProfileMenu()
+  closeMobileProfileMenu()
+  router.push('/improve-result')
 }
 
 const toggleProfileMenu = (event) => {
