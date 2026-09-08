@@ -994,7 +994,7 @@ const sections = [
       {
         type: 'checkbox-group',
         key: 'regularVoiceUse',
-        label: 'Which of these do you do regularly?',
+        label: 'Which of these do you do before recording?',
         hint: '(select all that apply)',
         exclusiveOption: 'None of the above',
         options: [
