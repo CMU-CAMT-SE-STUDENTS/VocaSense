@@ -730,9 +730,13 @@ function openRecordDetail(id) {
 function closeRecordDetail() {
   mobileDetailOpen.value = false
 }
-// Changing filters re-scopes the list, so drop back to it rather than leaving
-// the overlay open on a record that may no longer match.
-watch([dateFilter, riskFilter], () => { mobileDetailOpen.value = false })
+// UC-15 SRS-144: only drop back to the list when the previously selected
+// record no longer matches the new filters — if it still matches, the
+// detail stays open.
+watch([dateFilter, riskFilter], () => {
+  const stillMatches = filteredRecords.value.some((r) => r.id === selectedId.value)
+  if (!stillMatches) mobileDetailOpen.value = false
+})
 
 const riskFilterOptions = [
   { value: 'all', label: 'All Risk' },
