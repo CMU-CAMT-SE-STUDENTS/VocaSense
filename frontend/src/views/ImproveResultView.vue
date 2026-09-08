@@ -19,33 +19,61 @@
       </p>
 
       <!-- Guest: single card, the 7-section wizard below -->
-      <div v-if="!isMember" class="card intro-card">
-        <div class="card-head">
-          <div class="icon-wrap sm"><img src="@/assets/icons/test_passed.png" alt="" class="header-icon-img" /></div>
-          <div>
-            <strong>About This Recording</strong>
-            <span>Recording from {{ recordingLabel }}</span>
+      <div v-if="!isMember" class="card intro-card" :class="{ 'intro-card-empty': !hasRecording }">
+        <!-- No recording yet: send the member to record instead of into the
+             assessment (see hasRecording) -->
+        <template v-if="!hasRecording">
+          <div class="icon-wrap lg record-prompt-icon icon-wrap-muted"><img src="@/assets/icons/Microphone.png" alt="" class="record-prompt-icon-img" /></div>
+          <h3 class="record-prompt-title">Record Your Voice First</h3>
+          <p class="record-prompt-desc">This assessment is about a specific recording. Record a quick voice sample, then come back here to answer it.</p>
+          <button class="btn-primary" type="button" @click="router.push('/recording')">Record Now</button>
+        </template>
+
+        <template v-else>
+          <div class="card-head">
+            <div class="icon-wrap sm"><img src="@/assets/icons/test_passed.png" alt="" class="header-icon-img" /></div>
+            <div>
+              <strong>About This Recording</strong>
+              <span>Recording from {{ recordingLabel }}</span>
+            </div>
           </div>
-        </div>
 
-        <h3 class="why-title">Why these questions matter</h3>
-        <ul class="why-list">
-          <li>
-            <span class="why-icon"><InsightIcon kind="pulse" /></span>
-            We can tell an off day from a real change
-          </li>
-          <li>
-            <span class="why-icon"><InsightIcon kind="scale" /></span>
-            We compare your recordings fairly
-          </li>
-          <li>
-            <span class="why-icon"><InsightIcon kind="trend" /></span>
-            You see what affects your voice over time
-          </li>
-        </ul>
+          <template v-if="!assessmentDoneForRecording">
+            <h3 class="why-title">Why these questions matter</h3>
+            <ul class="why-list">
+              <li>
+                <span class="why-icon"><InsightIcon kind="pulse" /></span>
+                We can tell an off day from a real change
+              </li>
+              <li>
+                <span class="why-icon"><InsightIcon kind="scale" /></span>
+                We compare your recordings fairly
+              </li>
+              <li>
+                <span class="why-icon"><InsightIcon kind="trend" /></span>
+                You see what affects your voice over time
+              </li>
+            </ul>
 
-        <button class="btn-primary" type="button" @click="openAssessment">Start assessment</button>
-        <p class="intro-footnote">We'll update your result as soon as you're done.</p>
+            <button class="btn-primary" type="button" @click="openAssessment">Start assessment</button>
+            <p class="intro-footnote">We'll update your result as soon as you're done.</p>
+          </template>
+
+          <!-- Already answered: mirror the member card's "done" state so a
+               guest sees the same status instead of "Start assessment" again -->
+          <template v-else>
+            <span class="task-badge task-badge-done intro-answered-badge">
+              <span aria-hidden="true">&#10003;</span> Answered
+            </span>
+            <p class="intro-footnote">You're all set &mdash; view your result, or edit your answers below.</p>
+            <button class="btn-primary" type="button" @click="router.push('/result')">
+              View My Results <span aria-hidden="true">&rarr;</span>
+            </button>
+            <button class="btn-outline complete-secondary-btn" type="button" @click="openAssessment">
+              Edit your answers <span aria-hidden="true">&rarr;</span>
+            </button>
+          </template>
+        </template>
       </div>
 
       <!-- Member: two entry points — the same per-recording wizard the guest
@@ -89,15 +117,22 @@
         <div class="member-card-grid">
           <div class="card member-task-card">
             <div class="task-card-head">
-              <div class="icon-wrap md"><img src="@/assets/icons/test_passed.png" alt="" class="task-icon-img" /></div>
+              <div class="icon-wrap md" :class="{ 'icon-wrap-muted': !hasRecording }">
+                <img :src="hasRecording ? testPassedIcon : microphoneIcon" alt="" class="task-icon-img" />
+              </div>
               <span v-if="assessmentDoneForRecording" class="task-badge task-badge-done">
                 <span aria-hidden="true">&#10003;</span> Answered
               </span>
+              <span v-else-if="!hasRecording" class="task-badge">Record first</span>
               <span v-else class="task-badge task-badge-accent">Every recording &middot; 1 min</span>
             </div>
             <h3 class="task-title"><span class="step-num-badge">1</span> About This Recording</h3>
-            <p class="task-desc">A rough morning could be bad sleep, or something more. This tells us which. <strong>Required</strong> to view your result.</p>
-            <button v-if="assessmentDoneForRecording" class="btn-outline" type="button" @click="openAssessment">
+            <p v-if="!hasRecording" class="task-desc">This assessment is about a specific recording &mdash; record your voice first, then answer it.</p>
+            <p v-else class="task-desc">A rough morning could be bad sleep, or something more. This tells us which. <strong>Required</strong> to view your result.</p>
+            <button v-if="!hasRecording" class="btn-primary sm" type="button" @click="router.push('/recording')">
+              Record Now <span aria-hidden="true">&rarr;</span>
+            </button>
+            <button v-else-if="assessmentDoneForRecording" class="btn-outline" type="button" @click="openAssessment">
               Edit your answers <span aria-hidden="true">&rarr;</span>
             </button>
             <button v-else class="btn-primary sm" type="button" @click="openAssessment">
@@ -171,7 +206,9 @@
                     </div>
                   </div>
 
-                  <button class="btn-primary" type="button" @click="closeForm">Close</button>
+                  <button class="btn-primary" type="button" @click="viewResult">
+                    See my update result <span aria-hidden="true">&rarr;</span>
+                  </button>
                   <button
                     v-if="isMember && !hasBaseline"
                     class="btn-outline complete-secondary-btn"
@@ -492,6 +529,8 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
+import testPassedIcon from '@/assets/icons/test_passed.png'
+import microphoneIcon from '@/assets/icons/Microphone.png'
 
 const route = useRoute()
 const router = useRouter()
@@ -607,6 +646,12 @@ function closeForm() {
   router.push({ path: '/improve-result' })
 }
 
+// SRS-147: from the completion screen, "See my update result" goes straight
+// to the Result Dashboard rather than back to this page.
+function viewResult() {
+  router.push('/result')
+}
+
 const showCloseConfirm = ref(false)
 
 // In-progress answers only live in memory until Submit writes them to
@@ -672,6 +717,13 @@ onUnmounted(() => {
 // across popup open/close so re-opening after Submit shows the same saved
 // answers instead of a blank form.
 const recordingKey = computed(() => sessionStorage.getItem('vocasense:lastVoiceAnalysisAt') || 'unknown')
+
+// UC-16 precondition: "About This Recording" only makes sense once a
+// recording exists. Gating the card itself (button routes to /recording
+// instead of the assessment) means the member never clicks into a flow that
+// then bounces them elsewhere — the router guard in router/index.js is only
+// a fallback for a direct URL/back-forward-cache visit.
+const hasRecording = computed(() => recordingKey.value !== 'unknown')
 
 const recordingLabel = computed(() => {
   const date = recordingKey.value !== 'unknown' ? new Date(recordingKey.value) : new Date()
@@ -1323,6 +1375,19 @@ const InsightIcon = (props) => {
 .icon-wrap.lg svg { width: 28px; height: 28px; }
 .complete-icon-img { width: 32px; height: 32px; object-fit: contain; }
 
+/* ── Intro: no recording yet (empty-state prompt) ── */
+.intro-card-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 32px 34px;
+}
+.record-prompt-icon { margin: 0 auto 18px; }
+.record-prompt-icon-img { width: 26px; height: 26px; object-fit: contain; }
+.record-prompt-title { font-size: 17px; font-weight: 700; color: #1a1a2e; margin: 0 0 8px; }
+.record-prompt-desc { font-size: 13px; color: #8b96ad; line-height: 1.6; margin: 0 0 26px; max-width: 360px; }
+
 /* ── Intro ── */
 .assess-title {
   font-size: 24px;
@@ -1500,6 +1565,7 @@ const InsightIcon = (props) => {
 }
 
 .task-badge-accent { background: #eaf1ff; color: #3d6fd1; }
+.intro-answered-badge { margin-bottom: 14px; }
 .task-badge-done {
   background: #e8f6ec;
   color: #2f9e52;

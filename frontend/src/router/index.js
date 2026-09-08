@@ -66,4 +66,16 @@ const router = createRouter({
   ]
 })
 
+// UC-16 precondition: "About This Recording" answers a specific recording,
+// so it requires one to exist. Scoped to ?form=assessment only — the bare
+// page and ?form=baseline ("Set Your Baseline") stay reachable with no
+// recording at all, since a member can set their baseline any time.
+router.beforeEach((to) => {
+  if (to.path === '/improve-result' && to.query.form === 'assessment') {
+    if (!sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')) {
+      return { path: '/recording', query: { reason: 'needs-recording' } }
+    }
+  }
+})
+
 export default router
