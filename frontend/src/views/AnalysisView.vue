@@ -268,6 +268,10 @@ function completeStepsFromStoredResult(result) {
     step.progress = 100
   })
   analysisDone.value = true
+  // SRS-91: revisiting this page with an already-completed result (e.g. via
+  // Back) must still land on the Result Dashboard automatically, same as the
+  // fresh-analysis path's runStep() does once every step finishes.
+  setTimeout(() => router.push('/result'), 300)
 }
 
 onMounted(async () => {
