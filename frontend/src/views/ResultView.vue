@@ -17,10 +17,6 @@
         </div>
 
         <div class="topbar-actions">
-          <button class="btn-ghost" type="button" @click="shareResult">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Share
-          </button>
           <button class="btn-ghost" type="button" disabled title="Available in a future update">
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Export
@@ -34,7 +30,7 @@
       </div>
 
       <section class="status-card">
-        <div class="status-icon" :class="overallMeta.level === 'low' ? 'status-icon-healthy' : 'risk-bg-' + overallMeta.level">
+        <div class="status-icon" :class="'risk-bg-' + overallMeta.level">
           <StatusIcon :level="overallMeta.level" />
         </div>
         <span class="status-badge" :class="'risk-bg-' + overallMeta.level + ' risk-text-' + overallMeta.level">{{ overallMeta.badge }}</span>
@@ -127,7 +123,7 @@
             <svg viewBox="0 0 24 24" fill="none" class="improve-chevron"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
 
-          <div class="card progress-card">
+          <div class="card progress-card" v-if="!isMember">
             <div class="progress-icon">
               <img src="@/assets/icons/research.png" alt="" class="glyph-img" />
             </div>
@@ -144,10 +140,6 @@
       <p>No recent voice analysis was found.</p>
       <button class="btn-primary" type="button" @click="router.push('/recording')">Take a Voice Test</button>
     </div>
-
-    <transition name="toast">
-      <div v-if="toastMessage" class="toast">{{ toastMessage }}</div>
-    </transition>
   </div>
 </template>
 
@@ -160,13 +152,11 @@ import AudioIcon from '@/assets/icons/audio.png'
 import WaterIcon from '@/assets/icons/water.png'
 import MicrophoneIcon from '@/assets/icons/Microphone.png'
 import SleepingBedIcon from '@/assets/icons/sleeping_bed.png'
-import CheckMarkIcon from '@/assets/icons/check_mark.png'
 import SparklesIcon from '@/assets/icons/Sparkles_1.png'
 import MuteIcon from '@/assets/icons/mute.png'
 
 const router = useRouter()
 const result = ref(null)
-const toastMessage = ref('')
 const isMember = ref(false)
 
 onMounted(async () => {
@@ -292,6 +282,20 @@ const selfAssessment = computed(() => {
   }
 })
 
+// The member's one-time baseline profile (smoking/alcohol history, daily
+// voice-use hours, home/work environment) — same key ImproveResultView.vue
+// reads/writes. Unlike the per-recording assessment, this isn't tied to any
+// one recording, so it has no session timestamp key.
+const LS_BASELINE_KEY = 'vocasense:baselineAnswers'
+const voiceBaseline = computed(() => {
+  try {
+    const raw = localStorage.getItem(LS_BASELINE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+})
+
 // Backend returns scores/conditions but no coaching copy, so recommendations
 // are derived client-side from the same conditions shown in the metric cards,
 // plus this recording's self-assessment answers (if the user submitted one) —
@@ -337,63 +341,73 @@ const recommendations = computed(() => {
     if (assessment.hoursSlept !== '' && !Number.isNaN(hoursSlept) && hoursSlept < 6 && !items.some((i) => i.kind === 'sleep')) {
       items.push({ kind: 'sleep', text: 'You reported less sleep than usual — try to rest more before your next recording', priority: 'moderate' })
     }
+
+    if (assessment.alcohol === 'yes' || assessment.smoked === 'yes') {
+      items.push({ kind: 'rest', text: 'Avoid alcohol and smoking before recording — they can affect your voice', priority: 'moderate' })
+    }
+
+    const glassesToday = Number(assessment.glassesToday)
+    if (assessment.glassesToday !== '' && !Number.isNaN(glassesToday) && glassesToday < 6 && !items.some((i) => i.kind === 'water')) {
+      items.push({ kind: 'water', text: 'You reported drinking less water than recommended today — try to increase your intake', priority: 'moderate' })
+    }
+
+    const voiceUse = assessment.regularVoiceUse || []
+    const environment = assessment.environment || []
+    if (
+      (voiceUse.includes('Shout or yell') || voiceUse.includes('Speak loudly') || environment.includes('Noisy')) &&
+      !items.some((i) => i.kind === 'voice')
+    ) {
+      items.push({ kind: 'voice', text: 'You reported shouting, speaking loudly, or a noisy environment — try to lower your volume', priority: 'moderate' })
+    }
+  }
+
+  // Baseline-derived tips are long-term risk factors, not about this specific
+  // recording, so each is worded as "your baseline shows..." to stay distinct
+  // from the acoustic- and assessment-based tips above rather than blending in
+  // unexplained (e.g. quietly lowering a threshold would look like the system
+  // mis-measured this recording).
+  const baseline = voiceBaseline.value
+  if (baseline) {
+    if (baseline.smokingStatus === 'current' || baseline.alcoholStatus === 'yes') {
+      items.push({ kind: 'rest', text: 'Your baseline shows regular smoking or alcohol use — both are long-term risk factors for vocal health', priority: 'moderate' })
+    }
+
+    const hoursVoiceHome = Number(baseline.hoursVoiceHome)
+    const hoursVoiceWork = Number(baseline.hoursVoiceWork)
+    const totalDailyVoiceHours = (Number.isNaN(hoursVoiceHome) ? 0 : hoursVoiceHome) + (Number.isNaN(hoursVoiceWork) ? 0 : hoursVoiceWork)
+    if (totalDailyVoiceHours >= 6) {
+      items.push({ kind: 'warmup', text: 'Your baseline shows heavy daily voice use — take short vocal breaks throughout the day', priority: 'moderate' })
+    }
+
+    const baselineVoiceUse = baseline.regularVoiceUse || []
+    const baselineEnvironment = [...(baseline.homeEnvironment || []), ...(baseline.workEnvironment || [])]
+    if (
+      (baselineVoiceUse.includes('Shout or yell') || baselineVoiceUse.includes('Speak loudly') || baselineEnvironment.includes('Noisy')) &&
+      !items.some((i) => i.kind === 'voice')
+    ) {
+      items.push({ kind: 'voice', text: 'Your baseline shows frequent loud speaking or noisy environments — these add up to long-term vocal strain', priority: 'moderate' })
+    }
   }
 
   return items.slice(0, 6)
 })
 
-// ── Share / Export ──────────────────────────────────────────────────
-function summaryText() {
-  const lines = [
-    'VocaSense — Voice Analysis Result',
-    formattedDate.value,
-    '',
-    overallMeta.value.badge,
-    ...metrics.value.map((m) => `${m.label}: ${m.value}`),
-    '',
-    'Recommendations:',
-    ...recommendations.value.map((r) => `- ${r.text} (${r.priority === 'high' ? 'High' : 'Moderate'} Priority)`)
-  ]
-  return lines.join('\n')
-}
-
-function showToast(message) {
-  toastMessage.value = message
-  setTimeout(() => { toastMessage.value = '' }, 2200)
-}
-
-async function shareResult() {
-  const text = summaryText()
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: 'VocaSense Voice Analysis', text })
-      return
-    } catch {
-      // user cancelled or share failed — fall through to clipboard
-    }
-  }
-  try {
-    await navigator.clipboard.writeText(text)
-    showToast('Result copied to clipboard')
-  } catch {
-    showToast('Could not copy result')
-  }
-}
-
 // ── Icons ────────────────────────────────────────────────────────────
 const StatusIcon = (props) => {
   if (props.level === 'high') {
+    return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+      h('path', { d: 'M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+    ])
+  }
+  if (props.level === 'moderate') {
     return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
       h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
       h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round' })
     ])
   }
-  if (props.level === 'moderate') {
-    return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-      h('path', { d: 'M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
-    ])
-  }
-  return h('img', { src: CheckMarkIcon, alt: '', class: 'glyph-img' })
+  return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+    h('path', { d: 'm5 13 4 4L19 7', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+  ])
 }
 
 // Image glyphs on a gradient square: sparkle for clarity, waveform for
@@ -606,8 +620,6 @@ const RecommendationIcon = (props) => {
 }
 
 .status-icon svg, .status-icon .glyph-img { width: 26px; height: 26px; object-fit: contain; }
-
-.status-icon-healthy { background: linear-gradient(135deg, #3fc987, #73d8a5, #a8e8c4); }
 
 .status-badge {
   padding: 5px 14px;
@@ -1072,24 +1084,6 @@ const RecommendationIcon = (props) => {
   cursor: pointer;
   padding: 2px;
 }
-
-/* ── Toast ── */
-.toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #1a1a2e;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 10px 18px;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-}
-
-.toast-enter-active, .toast-leave-active { transition: opacity 0.2s ease; }
-.toast-enter-from, .toast-leave-to { opacity: 0; }
 
 /* ── Responsive ── */
 @media (max-width: 780px) {
