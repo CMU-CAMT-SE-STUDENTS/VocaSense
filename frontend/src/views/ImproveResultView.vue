@@ -6,163 +6,204 @@
     <!-- Base page: always visible underneath, the popup opens on top of this -->
     <template v-else>
       <div class="page-topbar">
-        <button class="btn-back" @click="router.push('/result')">
+        <button v-if="isMember && entryContext === 'baseline'" class="btn-back" @click="router.push('/')">
+          <span class="back-arrow">&larr;</span> Back To Home
+        </button>
+        <button v-else class="btn-back" @click="router.push('/result')">
           <span class="back-arrow">&larr;</span> Back To Result Dashboard
         </button>
       </div>
 
-      <div class="page-inner" :class="{ 'page-inner-wide': isMember }">
-      <h1 class="assess-title">Voice Self-Assessment</h1>
+      <div class="page-inner">
+      <h1 class="assess-title">
+        <template v-if="isMember && entryContext === 'baseline'">Set Your Voice Baseline</template>
+        <template v-else>Voice Self-Assessment</template>
+      </h1>
       <p class="assess-subtitle">
-        <template v-if="isMember">Two short forms. Both make your voice analysis more accurate.</template>
+        <template v-if="isMember && entryContext === 'baseline'">A one-time background questionnaire about you &mdash; about 3 minutes.</template>
+        <template v-else-if="isMember">Two short forms. Both make your voice analysis more accurate.</template>
         <template v-else>Seven quick questions &mdash; about 1 minute.</template>
       </p>
 
-      <!-- Guest: single card, the 7-section wizard below -->
-      <div v-if="!isMember" class="card intro-card" :class="{ 'intro-card-empty': !hasRecording }">
-        <!-- No recording yet: send the member to record instead of into the
-             assessment (see hasRecording) -->
-        <template v-if="!hasRecording">
-          <div class="icon-wrap lg record-prompt-icon icon-wrap-muted"><img src="@/assets/icons/Microphone.png" alt="" class="record-prompt-icon-img" /></div>
-          <h3 class="record-prompt-title">Record Your Voice First</h3>
-          <p class="record-prompt-desc">This assessment is about a specific recording. Record a quick voice sample, then come back here to answer it.</p>
-          <button class="btn-primary" type="button" @click="router.push('/recording')">Record Now</button>
-        </template>
-
-        <template v-else>
+      <!-- Member baseline: reachable only from the navbar's "Set Baseline"
+           link (see entryContext) — its own full page, never mixed with the
+           recording card/stepper below. -->
+      <template v-if="isMember && entryContext === 'baseline'">
+        <div class="card intro-card">
           <div class="card-head">
-            <div class="icon-wrap sm"><img src="@/assets/icons/test_passed.png" alt="" class="header-icon-img" /></div>
+            <div class="icon-wrap sm"><img src="@/assets/icons/user.png" alt="" class="header-icon-img" /></div>
             <div>
-              <strong>About This Recording</strong>
-              <span>Recording from {{ recordingLabel }}</span>
+              <strong>Set Your Baseline</strong>
+              <span>One-time &middot; about 3 minutes</span>
             </div>
+            <span v-if="hasBaseline" class="task-badge task-badge-done head-corner-badge">
+              <span aria-hidden="true">&#10003;</span> Set
+            </span>
           </div>
 
-          <template v-if="!assessmentDoneForRecording">
-            <h3 class="why-title">Why these questions matter</h3>
+          <template v-if="!hasBaseline">
+            <h3 class="why-title">Why this helps</h3>
             <ul class="why-list">
               <li>
                 <span class="why-icon"><InsightIcon kind="pulse" /></span>
-                We can tell an off day from a real change
+                Tells your normal voice apart from a temporary change
               </li>
               <li>
                 <span class="why-icon"><InsightIcon kind="scale" /></span>
-                We compare your recordings fairly
+                Makes every result's comparison fair to your own age, habits, and lifestyle
               </li>
               <li>
                 <span class="why-icon"><InsightIcon kind="trend" /></span>
-                You see what affects your voice over time
+                One-time only &mdash; you won't need to fill this in again
               </li>
             </ul>
 
-            <button class="btn-primary" type="button" @click="openAssessment">Start assessment</button>
-            <p class="intro-footnote">We'll update your result as soon as you're done.</p>
+            <button class="btn-primary" type="button" @click="openBaseline">Set your baseline</button>
+            <p class="intro-footnote">Optional, but improves the accuracy of every result.</p>
           </template>
 
-          <!-- Already answered: mirror the member card's "done" state so a
-               guest sees the same status instead of "Start assessment" again -->
           <template v-else>
-            <span class="task-badge task-badge-done intro-answered-badge">
-              <span aria-hidden="true">&#10003;</span> Answered
-            </span>
-            <p class="intro-footnote">You're all set &mdash; view your result, or edit your answers below.</p>
-            <button class="btn-primary" type="button" @click="router.push('/result')">
-              View My Results <span aria-hidden="true">&rarr;</span>
-            </button>
-            <button class="btn-outline complete-secondary-btn" type="button" @click="openAssessment">
-              Edit your answers <span aria-hidden="true">&rarr;</span>
+            <p class="intro-footnote">Your baseline is set &mdash; edit it any time. You can always get back here from the profile menu.</p>
+            <button class="btn-outline complete-secondary-btn" type="button" @click="openBaseline">
+              Edit your baseline <span aria-hidden="true">&rarr;</span>
             </button>
           </template>
-        </template>
-      </div>
+        </div>
+      </template>
 
-      <!-- Member: two entry points — the same per-recording wizard the guest
-           uses, plus the one-time baseline form. "About This Recording" is
-           required to view results; the baseline only improves accuracy, so
-           it never blocks the results button. -->
-      <template v-else>
-        <div class="card guide-card">
-          <div class="guide-track">
-            <div class="guide-step" :class="{ done: assessmentDoneForRecording }">
-              <span class="guide-step-num">
-                <span v-if="assessmentDoneForRecording" aria-hidden="true">&#10003;</span>
-                <template v-else>1</template>
-              </span>
-              <span class="guide-step-label">About This Recording</span>
-              <span class="guide-step-tag guide-step-tag-required">Required</span>
+      <!-- Member, arrived via Result Dashboard's "Improve this result": both
+           forms at once, with a plain step tracker so it's obvious there are
+           two (and that only one of them is actually required). -->
+      <template v-else-if="isMember">
+        <div class="card stepper-card">
+          <div class="stepper-row">
+            <div class="step" :class="{ done: hasRecording && assessmentDoneForRecording }">
+              <span class="step-circle"><span v-if="hasRecording && assessmentDoneForRecording" aria-hidden="true">&#10003;</span><span v-else>1</span></span>
+              <span class="step-label">About This Recording</span>
             </div>
-            <span class="guide-arrow" aria-hidden="true">&rarr;</span>
-            <div class="guide-step" :class="{ done: hasBaseline }">
-              <span class="guide-step-num">
-                <span v-if="hasBaseline" aria-hidden="true">&#10003;</span>
-                <template v-else>2</template>
-              </span>
-              <span class="guide-step-label">Set Your Baseline</span>
-              <span class="guide-step-tag">Optional</span>
+            <span class="step-arrow" aria-hidden="true">&rarr;</span>
+            <div class="step" :class="{ done: hasBaseline }">
+              <span class="step-circle"><span v-if="hasBaseline" aria-hidden="true">&#10003;</span><span v-else>2</span></span>
+              <span class="step-label">Set Your Baseline</span>
             </div>
-            <span class="guide-arrow" aria-hidden="true">&rarr;</span>
-            <div class="guide-step" :class="{ done: assessmentDoneForRecording }">
-              <span class="guide-step-num">3</span>
-              <span class="guide-step-label">View Your Result</span>
+            <span class="step-arrow" aria-hidden="true">&rarr;</span>
+            <div class="step">
+              <span class="step-circle">3</span>
+              <span class="step-label">View Your Result</span>
             </div>
           </div>
-
-          <p class="guide-text">
-            <template v-if="!assessmentDoneForRecording">&ldquo;About This Recording&rdquo; is required before you can view your result.</template>
-            <template v-else-if="!hasBaseline">You're set &mdash; view your result now, or set your baseline (optional) for better accuracy.</template>
-            <template v-else>Both forms are done &mdash; your result is ready to view.</template>
-          </p>
+          <p class="stepper-status">{{ stepperStatusText }}</p>
         </div>
 
-        <div class="member-card-grid">
-          <div class="card member-task-card">
-            <div class="task-card-head">
-              <div class="icon-wrap md" :class="{ 'icon-wrap-muted': !hasRecording }">
-                <img :src="hasRecording ? testPassedIcon : microphoneIcon" alt="" class="task-icon-img" />
+        <div class="dual-card-grid">
+          <div class="card mini-card" :class="{ 'mini-card-muted': !hasRecording }">
+            <div class="mini-card-head">
+              <div class="icon-wrap sm" :class="{ 'icon-wrap-muted': !hasRecording }">
+                <img v-if="hasRecording" src="@/assets/icons/test_passed.png" alt="" class="header-icon-img" />
+                <img v-else src="@/assets/icons/Microphone.png" alt="" class="header-icon-img" />
               </div>
               <span v-if="assessmentDoneForRecording" class="task-badge task-badge-done">
                 <span aria-hidden="true">&#10003;</span> Answered
               </span>
-              <span v-else-if="!hasRecording" class="task-badge">Record first</span>
-              <span v-else class="task-badge task-badge-accent">Every recording &middot; 1 min</span>
             </div>
-            <h3 class="task-title"><span class="step-num-badge">1</span> About This Recording</h3>
-            <p v-if="!hasRecording" class="task-desc">This assessment is about a specific recording &mdash; record your voice first, then answer it.</p>
-            <p v-else class="task-desc">A rough morning could be bad sleep, or something more. This tells us which. <strong>Required</strong> to view your result.</p>
+            <strong class="mini-card-title">About This Recording</strong>
+            <p v-if="!hasRecording" class="mini-card-desc">This assessment is about a specific recording &mdash; record your voice first, then answer it.</p>
+            <p v-else class="mini-card-desc">A rough morning could be bad sleep, or something more. This tells us which.</p>
             <button v-if="!hasRecording" class="btn-primary sm" type="button" @click="router.push('/recording')">
               Record Now <span aria-hidden="true">&rarr;</span>
             </button>
-            <button v-else-if="assessmentDoneForRecording" class="btn-outline" type="button" @click="openAssessment">
+            <button v-else-if="assessmentDoneForRecording" class="btn-outline sm" type="button" @click="openAssessment">
               Edit your answers <span aria-hidden="true">&rarr;</span>
             </button>
             <button v-else class="btn-primary sm" type="button" @click="openAssessment">
-              Answer for this recording <span aria-hidden="true">&rarr;</span>
+              Start assessment <span aria-hidden="true">&rarr;</span>
             </button>
           </div>
 
-          <div class="card member-task-card">
-            <div class="task-card-head">
-              <div class="icon-wrap md icon-wrap-muted"><img src="@/assets/icons/user.png" alt="" class="task-icon-img" /></div>
+          <div class="card mini-card">
+            <div class="mini-card-head">
+              <div class="icon-wrap sm"><img src="@/assets/icons/user.png" alt="" class="header-icon-img" /></div>
               <span v-if="hasBaseline" class="task-badge task-badge-done">
                 <span aria-hidden="true">&#10003;</span> Set
               </span>
-              <span v-else class="task-badge">Once &middot; 3 min</span>
             </div>
-            <h3 class="task-title"><span class="step-num-badge">2</span> Set Your Baseline</h3>
-            <p class="task-desc">What counts as a normal voice differs per person. Optional, but improves accuracy.</p>
-            <button class="btn-outline" type="button" @click="openBaseline">
-              <template v-if="hasBaseline">Edit your baseline <span aria-hidden="true">&rarr;</span></template>
-              <template v-else>Set your baseline <span aria-hidden="true">&rarr;</span></template>
+            <strong class="mini-card-title">Set Your Baseline</strong>
+            <p class="mini-card-desc">What counts as a normal voice differs per person. Optional, but improves accuracy.</p>
+            <button v-if="hasBaseline" class="btn-outline sm" type="button" @click="openBaseline">
+              Edit your baseline <span aria-hidden="true">&rarr;</span>
+            </button>
+            <!-- Outline, not the solid gradient About This Recording uses —
+                 baseline is optional, so its button shouldn't compete for
+                 attention with the required step or the final CTA below. -->
+            <button v-else class="btn-outline sm" type="button" @click="openBaseline">
+              Set your baseline <span aria-hidden="true">&rarr;</span>
             </button>
           </div>
         </div>
 
-        <button v-if="assessmentDoneForRecording" class="btn-primary result-cta" type="button" @click="router.push('/result')">
+        <button class="btn-primary result-cta" type="button" @click="handleViewResults">
           View My Results <span aria-hidden="true">&rarr;</span>
         </button>
-        <p v-if="assessmentDoneForRecording && !hasBaseline" class="result-cta-hint">
-          Tip: setting your baseline is optional, but makes your results more accurate.
-        </p>
+      </template>
+
+      <!-- Guest: single card, the 7-section wizard below. Guests have no
+           baseline concept, so no stepper here. -->
+      <template v-else>
+        <div class="card intro-card" :class="{ 'intro-card-empty': !hasRecording }">
+          <!-- No recording yet: send them to record instead of into the
+               assessment (see hasRecording) -->
+          <template v-if="!hasRecording">
+            <div class="icon-wrap lg record-prompt-icon icon-wrap-muted"><img src="@/assets/icons/Microphone.png" alt="" class="record-prompt-icon-img" /></div>
+            <h3 class="record-prompt-title">Record Your Voice First</h3>
+            <p class="record-prompt-desc">This assessment is about a specific recording. Record a quick voice sample, then come back here to answer it.</p>
+            <button class="btn-primary" type="button" @click="router.push('/recording')">Record Now</button>
+          </template>
+
+          <template v-else>
+            <div class="card-head">
+              <div class="icon-wrap sm"><img src="@/assets/icons/test_passed.png" alt="" class="header-icon-img" /></div>
+              <div>
+                <strong>About This Recording</strong>
+                <span>Recording from {{ recordingLabel }}</span>
+              </div>
+            </div>
+
+            <template v-if="!assessmentDoneForRecording">
+              <h3 class="why-title">Why these questions matter</h3>
+              <ul class="why-list">
+                <li>
+                  <span class="why-icon"><InsightIcon kind="pulse" /></span>
+                  We can tell an off day from a real change
+                </li>
+                <li>
+                  <span class="why-icon"><InsightIcon kind="scale" /></span>
+                  We compare your recordings fairly
+                </li>
+                <li>
+                  <span class="why-icon"><InsightIcon kind="trend" /></span>
+                  You see what affects your voice over time
+                </li>
+              </ul>
+
+              <button class="btn-primary" type="button" @click="openAssessment">Start assessment</button>
+              <p class="intro-footnote">We'll update your result as soon as you're done.</p>
+            </template>
+
+            <!-- Already answered -->
+            <template v-else>
+              <span class="task-badge task-badge-done intro-answered-badge">
+                <span aria-hidden="true">&#10003;</span> Answered
+              </span>
+              <p class="intro-footnote">You're all set &mdash; view your result, or edit your answers below.</p>
+              <button class="btn-primary" type="button" @click="router.push('/result')">
+                View My Results <span aria-hidden="true">&rarr;</span>
+              </button>
+              <button class="btn-outline complete-secondary-btn" type="button" @click="openAssessment">
+                Edit your answers <span aria-hidden="true">&rarr;</span>
+              </button>
+            </template>
+          </template>
+        </div>
       </template>
       </div>
     </template>
@@ -171,28 +212,35 @@
     <Teleport to="body">
       <div v-if="modalOpen" class="modal-backdrop">
         <div class="modal-panel" role="dialog" aria-modal="true" aria-label="Voice self-assessment questions">
-          <button class="modal-close" type="button" @click="requestClose" aria-label="Close">
-            <CloseIcon />
-          </button>
+          <!-- Sticks to the top of the scrollable panel: on a long section
+               (7 questions deep) the close button and section progress used
+               to scroll away with the content, so getting back to either
+               meant scrolling all the way back up first. -->
+          <div class="modal-sticky-head">
+            <button class="modal-close" type="button" @click="requestClose" aria-label="Close">
+              <CloseIcon />
+            </button>
 
-          <div class="card-head">
-            <div class="icon-wrap sm"><img src="@/assets/icons/test_passed.png" alt="" class="header-icon-img" /></div>
-            <div>
-              <strong>About This Recording</strong>
-              <span>Recording from {{ recordingLabel }}</span>
+            <div class="card-head">
+              <div class="icon-wrap sm"><img src="@/assets/icons/test_passed.png" alt="" class="header-icon-img" /></div>
+              <div>
+                <strong>About This Recording</strong>
+                <span>Recording from {{ recordingLabel }}</span>
+              </div>
             </div>
+
+            <div class="progress-row">
+              <span class="section-pill">Section {{ step === 'complete' ? sections.length : step }} of {{ sections.length }}</span>
+              <span class="section-name">{{ step === 'complete' ? 'Complete' : currentSection.title }}</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" :style="{ width: (step === 'complete' ? 100 : (step / sections.length) * 100) + '%' }"></div></div>
           </div>
 
+          <div class="modal-scroll-body">
           <Transition :name="direction > 0 ? 'slide-forward' : 'slide-back'" mode="out-in">
             <div :key="step" class="step-panel">
               <!-- complete -->
               <template v-if="step === 'complete'">
-                <div class="progress-row">
-                  <span class="section-pill">Section {{ sections.length }} of {{ sections.length }}</span>
-                  <span class="section-name">Complete</span>
-                </div>
-                <div class="progress-track"><div class="progress-fill" style="width: 100%"></div></div>
-
                 <div class="complete-body">
                   <div class="icon-wrap lg complete-icon-wrap">
                     <img src="@/assets/icons/test_passed.png" alt="" class="complete-icon-img" />
@@ -225,12 +273,6 @@
 
               <!-- section N -->
               <template v-else>
-                <div class="progress-row">
-                  <span class="section-pill">Section {{ step }} of {{ sections.length }}</span>
-                  <span class="section-name">{{ currentSection.title }}</span>
-                </div>
-                <div class="progress-track"><div class="progress-fill" :style="{ width: (step / sections.length) * 100 + '%' }"></div></div>
-
                 <div class="questions" @change="sectionTouched = true" @input="sectionTouched = true">
                   <div v-for="q in currentSection.questions" :key="q.key" class="question-block" :class="{ incomplete: sectionTouched && !isAnswered(q) }">
                     <p class="question-label">
@@ -342,6 +384,7 @@
               </template>
             </div>
           </Transition>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -350,30 +393,62 @@
     <Teleport to="body">
       <div v-if="baselineOpen" class="modal-backdrop">
         <div class="modal-panel" role="dialog" aria-modal="true" aria-label="Set your baseline questions">
-          <button class="modal-close" type="button" @click="requestClose" aria-label="Close">
-            <CloseIcon />
-          </button>
+          <!-- Sticks to the top of the scrollable panel, same as the
+               assessment wizard — but the progress row only makes sense once
+               past the intro card, since "intro" isn't a numbered section. -->
+          <div class="modal-sticky-head">
+            <button class="modal-close" type="button" @click="requestClose" aria-label="Close">
+              <CloseIcon />
+            </button>
 
-          <div class="card-head">
-            <div class="icon-wrap sm icon-wrap-muted"><img src="@/assets/icons/user.png" alt="" class="header-icon-img" /></div>
-            <div>
-              <strong>Set Your Baseline</strong>
-              <span>One-time &middot; about 3 minutes</span>
+            <div class="card-head">
+              <div class="icon-wrap sm"><img src="@/assets/icons/user.png" alt="" class="header-icon-img" /></div>
+              <div>
+                <strong>Set Your Baseline</strong>
+                <span>One-time &middot; about 3 minutes</span>
+              </div>
             </div>
+
+            <template v-if="baselineStep !== 'intro'">
+              <div class="progress-row">
+                <span class="section-pill">Section {{ baselineStep === 'complete' ? visibleBaselineSections.length : baselineStep }} of {{ visibleBaselineSections.length }}</span>
+                <span class="section-name">{{ baselineStep === 'complete' ? 'Complete' : currentBaselineSection.title }}</span>
+              </div>
+              <div class="progress-track"><div class="progress-fill" :style="{ width: (baselineStep === 'complete' ? 100 : (baselineStep / visibleBaselineSections.length) * 100) + '%' }"></div></div>
+            </template>
           </div>
 
+          <div class="modal-scroll-body">
           <Transition :name="baselineDirection > 0 ? 'slide-forward' : 'slide-back'" mode="out-in">
             <div :key="baselineStep" class="step-panel">
-              <!-- complete -->
-              <template v-if="baselineStep === 'complete'">
-                <div class="progress-row">
-                  <span class="section-pill">Section {{ visibleBaselineSections.length }} of {{ visibleBaselineSections.length }}</span>
-                  <span class="section-name">Complete</span>
-                </div>
-                <div class="progress-track"><div class="progress-fill" style="width: 100%"></div></div>
+              <!-- intro: shown once, first time setting a baseline, no matter
+                   which entry point opened this popup — so "why this helps"
+                   is never skipped just because the fuller intro card wasn't
+                   seen on the way in (e.g. arriving via the combined page). -->
+              <template v-if="baselineStep === 'intro'">
+                <h3 class="why-title">Why this helps</h3>
+                <ul class="why-list">
+                  <li>
+                    <span class="why-icon"><InsightIcon kind="pulse" /></span>
+                    Tells your normal voice apart from a temporary change
+                  </li>
+                  <li>
+                    <span class="why-icon"><InsightIcon kind="scale" /></span>
+                    Makes every result's comparison fair to your own age, habits, and lifestyle
+                  </li>
+                  <li>
+                    <span class="why-icon"><InsightIcon kind="trend" /></span>
+                    One-time only &mdash; you won't need to fill this in again
+                  </li>
+                </ul>
+                <button class="btn-primary" type="button" @click="baselineStep = 1">Continue</button>
+                <p class="intro-footnote">About 3 minutes &mdash; optional, but improves the accuracy of every result. You can always edit it later from the profile menu.</p>
+              </template>
 
+              <!-- complete -->
+              <template v-else-if="baselineStep === 'complete'">
                 <div class="complete-body">
-                  <div class="icon-wrap lg complete-icon-wrap icon-wrap-muted">
+                  <div class="icon-wrap lg complete-icon-wrap">
                     <img src="@/assets/icons/user.png" alt="" class="complete-icon-img" />
                   </div>
                   <h2>Your baseline is set!</h2>
@@ -385,24 +460,15 @@
                     </div>
                   </div>
 
-                  <button class="btn-primary" type="button" @click="openAssessment">
-                    Next: about this recording <span aria-hidden="true">&rarr;</span>
-                  </button>
+                  <button class="btn-primary" type="button" @click="closeForm">Done</button>
                   <div class="complete-links">
                     <button type="button" class="link-plain" @click="baselineStep = 1">Edit my answers</button>
-                    <button type="button" class="link-plain link-muted" @click="closeForm">Do this later</button>
                   </div>
                 </div>
               </template>
 
               <!-- section N -->
               <template v-else>
-                <div class="progress-row">
-                  <span class="section-pill">Section {{ baselineStep }} of {{ visibleBaselineSections.length }}</span>
-                  <span class="section-name">{{ currentBaselineSection.title }}</span>
-                </div>
-                <div class="progress-track"><div class="progress-fill" :style="{ width: (baselineStep / visibleBaselineSections.length) * 100 + '%' }"></div></div>
-
                 <div class="questions" @change="baselineSectionTouched = true" @input="baselineSectionTouched = true">
                   <div v-for="q in currentBaselineQuestions" :key="q.key" class="question-block" :class="{ incomplete: baselineSectionTouched && !isBaselineAnswered(q) }">
                     <p class="question-label">
@@ -504,6 +570,7 @@
               </template>
             </div>
           </Transition>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -512,12 +579,42 @@
     <Teleport to="body">
       <Transition name="modal-fade">
         <div v-if="showCloseConfirm" class="modal-overlay" @click="cancelClose">
-          <div class="modal-card" role="alertdialog" aria-modal="true" aria-label="Close assessment?" @click.stop>
+          <div class="modal-card" role="alertdialog" aria-modal="true" aria-label="Leave without saving?" @click.stop>
             <img src="@/assets/icons/notcomplete.png" alt="" class="modal-leave-icon" />
-            <h3 class="modal-title">Close this assessment?</h3>
-            <p class="modal-desc">Your answers won't be saved &mdash; you'll need to start over next time.</p>
+            <h3 class="modal-title">Leave without saving?</h3>
+            <p class="modal-desc">Closing or refreshing now will lose your answers &mdash; finish and submit first, or they won't be saved.</p>
             <button class="modal-btn modal-btn-red" type="button" @click="confirmClose">Close &amp; Discard</button>
             <button class="modal-dismiss" type="button" @click="cancelClose">Keep Answering</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Result-without-answering warning: shown for a member with a
+         recording who skips straight to "View My Results" without having
+         done About This Recording (the important one) and/or Baseline
+         (optional, but still worth flagging). Wording and which action is
+         offered depend on which of the two is actually missing. -->
+    <Teleport to="body">
+      <Transition name="modal-fade">
+        <div v-if="showResultWarning" class="modal-overlay" @click="cancelViewResults">
+          <div class="modal-card" role="alertdialog" aria-modal="true" aria-label="View result before finishing the forms?" @click.stop>
+            <img src="@/assets/icons/notcomplete.png" alt="" class="modal-leave-icon" />
+            <template v-if="resultWarningKind === 'assessment'">
+              <h3 class="modal-title">View result without answering?</h3>
+              <p class="modal-desc">
+                <template v-if="!hasBaseline">You haven't answered About This Recording or set your baseline yet. About This Recording matters most &mdash; without it, your result will look the same as it would without any of this, so it may be far less accurate.</template>
+                <template v-else>You haven't answered About This Recording yet &mdash; your result will show the same as it would without it, not adjusted for this recording.</template>
+              </p>
+              <button class="modal-btn" type="button" @click="openAssessment">Answer First</button>
+              <button class="modal-dismiss" type="button" @click="confirmViewResults">View Anyway</button>
+            </template>
+            <template v-else>
+              <h3 class="modal-title">View without setting your baseline?</h3>
+              <p class="modal-desc">Your baseline isn't set yet. It's optional, and About This Recording is already answered so your result is ready &mdash; but a baseline makes every result's comparison fair to your own age, habits, and lifestyle. You can always set it later from the profile menu.</p>
+              <button class="modal-btn" type="button" @click="openBaseline">Set Baseline</button>
+              <button class="modal-dismiss" type="button" @click="confirmViewResults">View Anyway</button>
+            </template>
           </div>
         </div>
       </Transition>
@@ -529,8 +626,8 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
-import testPassedIcon from '@/assets/icons/test_passed.png'
-import microphoneIcon from '@/assets/icons/Microphone.png'
+import { syncAccountScope } from '@/utils/accountScope'
+import { hasBaseline as sharedHasBaseline } from '@/utils/baselineStatus'
 
 const route = useRoute()
 const router = useRouter()
@@ -582,11 +679,13 @@ onMounted(async () => {
   const { data } = await supabase.auth.getSession()
   isMember.value = !!data.session?.user
   userId.value = data.session?.user?.id ?? null
+  syncAccountScope(userId.value)
 
   const savedBaseline = loadJSON(LS_BASELINE_KEY)
   if (savedBaseline) {
     Object.assign(baselineAnswers, savedBaseline)
     hasBaseline.value = true
+    sharedHasBaseline.value = true
   }
   const savedAssessment = loadJSON(assessmentStorageKey(recordingKey.value))
   if (savedAssessment) {
@@ -607,6 +706,7 @@ onMounted(async () => {
       if (remoteBaseline?.answers) {
         Object.assign(baselineAnswers, remoteBaseline.answers)
         hasBaseline.value = true
+        sharedHasBaseline.value = true
         saveJSON(LS_BASELINE_KEY, baselineAnswers)
       }
       if (remoteAssessment?.answers) {
@@ -634,22 +734,75 @@ onMounted(async () => {
 const modalOpen = computed(() => route.query.form === 'assessment')
 const baselineOpen = computed(() => route.query.form === 'baseline')
 
+// Which single card the member sees on the base page: the navbar's
+// "Self-Assessment Form" link sends ?entry=baseline, the Result Dashboard's
+// "Improve this result" sends ?entry=recording. Any other/missing value
+// (a bare URL, a bookmark) falls back to the recording form, since that's
+// the one required to view results.
+const entryContext = computed(() => route.query.entry === 'baseline' ? 'baseline' : 'recording')
+
+// The navbar's full baseline page already shows "why this helps" before the
+// wizard ever opens, so repeating it inside the popup would just be the same
+// card twice. Only the combined page (entryContext === 'recording', reached
+// via Result Dashboard) skips straight to the popup with no explanation
+// first — that's the one case the intro step exists to cover.
+const baselineNeedsIntro = computed(() => !hasBaseline.value && entryContext.value !== 'baseline')
+
+// Carries ?entry along through the popup open/close navigations below, so
+// closing a popup returns to the same single-card view instead of losing
+// which one the member came in for.
+function entryQuery() {
+  return route.query.entry ? { entry: route.query.entry } : {}
+}
+
 function openAssessment() {
-  router.push({ path: '/improve-result', query: { form: 'assessment' } })
+  // Also reachable from the result-warning modal's "Answer First" button —
+  // without closing it first, it stayed open on top of the wizard this just
+  // opened underneath it (both are teleported to <body>).
+  showResultWarning.value = false
+  router.push({ path: '/improve-result', query: { ...entryQuery(), form: 'assessment' } })
 }
 
 function openBaseline() {
-  router.push({ path: '/improve-result', query: { form: 'baseline' } })
+  showResultWarning.value = false
+  router.push({ path: '/improve-result', query: { ...entryQuery(), form: 'baseline' } })
 }
 
 function closeForm() {
-  router.push({ path: '/improve-result' })
+  router.push({ path: '/improve-result', query: entryQuery() })
 }
 
 // SRS-147: from the completion screen, "See my update result" goes straight
 // to the Result Dashboard rather than back to this page.
 function viewResult() {
   router.push('/result')
+}
+
+// A member with a recording who skips either form before jumping to the
+// result gets a heads-up first — About This Recording matters more, so it
+// takes priority over the baseline nudge when both are still missing.
+const showResultWarning = ref(false)
+const resultWarningKind = ref(null) // 'assessment' | 'baseline'
+
+function handleViewResults() {
+  if (hasRecording.value && !assessmentDoneForRecording.value) {
+    resultWarningKind.value = 'assessment'
+    showResultWarning.value = true
+  } else if (!hasBaseline.value) {
+    resultWarningKind.value = 'baseline'
+    showResultWarning.value = true
+  } else {
+    router.push('/result')
+  }
+}
+
+function confirmViewResults() {
+  showResultWarning.value = false
+  router.push('/result')
+}
+
+function cancelViewResults() {
+  showResultWarning.value = false
 }
 
 const showCloseConfirm = ref(false)
@@ -699,17 +852,39 @@ function confirmClose() {
 watch([modalOpen, baselineOpen], ([assessmentIsOpen, baselineIsOpen]) => {
   document.body.style.overflow = (assessmentIsOpen || baselineIsOpen) ? 'hidden' : ''
   if (assessmentIsOpen) step.value = 1
-  if (baselineIsOpen) baselineStep.value = 1
+  if (baselineIsOpen) baselineStep.value = baselineNeedsIntro.value ? 'intro' : 1
 })
 
 function handleKeydown(e) {
   if (e.key !== 'Escape') return
   if (showCloseConfirm.value) cancelClose()
+  else if (showResultWarning.value) cancelViewResults()
   else if (modalOpen.value || baselineOpen.value) requestClose()
 }
-onMounted(() => window.addEventListener('keydown', handleKeydown))
+
+// A real page refresh/close (not just clicking the in-app X) can't show our
+// own card — browsers only allow their own generic "Leave site?" prompt, and
+// only when the handler calls preventDefault(). Same "is there anything to
+// lose" check as the in-app close confirmation above.
+function hasUnsavedProgress() {
+  if (modalOpen.value && step.value !== 'complete') return hasProgressIn(answers)
+  if (baselineOpen.value && baselineStep.value !== 'complete') return hasProgressIn(baselineAnswers)
+  return false
+}
+
+function handleBeforeUnload(e) {
+  if (!hasUnsavedProgress()) return
+  e.preventDefault()
+  e.returnValue = ''
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
   document.body.style.overflow = ''
 })
 
@@ -729,6 +904,15 @@ const recordingLabel = computed(() => {
   const date = recordingKey.value !== 'unknown' ? new Date(recordingKey.value) : new Date()
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) +
     ', ' + date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+})
+
+// Status line under the member step tracker — only the recording assessment
+// actually gates anything, so the wording never implies the baseline does.
+const stepperStatusText = computed(() => {
+  if (!hasRecording.value) return 'Record your voice to get started.'
+  if (!assessmentDoneForRecording.value) return 'Answer About This Recording to continue.'
+  if (!hasBaseline.value) return 'Your result is ready — set your baseline anytime for better accuracy.'
+  return 'Both forms are done — your result is ready to view.'
 })
 
 // 0 = no symptoms (green) through 5 = very severe (red), so the scale reads
@@ -823,7 +1007,7 @@ const sections = [
       {
         type: 'checkbox-group',
         key: 'regularVoiceUse',
-        label: 'Which of these do you do regularly?',
+        label: 'Which of these do you do before recording?',
         hint: '(select all that apply)',
         exclusiveOption: 'None of the above',
         options: [
@@ -940,7 +1124,7 @@ async function submitAssessment() {
   try {
     saveJSON(assessmentStorageKey(recordingKey.value), answers)
     if (userId.value) {
-      await supabase.from('voice_assessments').upsert(
+      const { error } = await supabase.from('voice_assessments').upsert(
         {
           account_id: userId.value,
           recording_key: recordingKey.value,
@@ -948,6 +1132,7 @@ async function submitAssessment() {
         },
         { onConflict: 'account_id,recording_key' }
       )
+      if (error) throw error
     }
     assessmentDoneForRecording.value = true
     step.value = 'complete'
@@ -968,11 +1153,11 @@ const privacyLines = [
 // Smoking and alcohol each ask a status question, then a follow-up
 // section whose questions (and existence) depend on that answer.
 // ═══════════════════════════════════════════════════════════════════
-const baselineStep = ref(1) // 1..N | 'complete', N depends on branches taken
+const baselineStep = ref(1) // 'intro' | 1..N | 'complete', N depends on branches taken
 const baselineDirection = ref(1)
 
 watch(baselineStep, (next, prev) => {
-  const toNum = (v) => (v === 'complete' ? 999 : v)
+  const toNum = (v) => (v === 'intro' ? 0 : v === 'complete' ? 999 : v)
   baselineDirection.value = toNum(next) >= toNum(prev) ? 1 : -1
 })
 
@@ -1226,6 +1411,7 @@ function sanitizeBaselineNumberInput(key, event, max) {
 
 function baselineGoBack() {
   if (typeof baselineStep.value === 'number' && baselineStep.value > 1) baselineStep.value--
+  else if (baselineStep.value === 1 && baselineNeedsIntro.value) baselineStep.value = 'intro'
   else requestClose()
 }
 
@@ -1240,12 +1426,20 @@ async function baselineNext() {
   try {
     saveJSON(LS_BASELINE_KEY, baselineAnswers)
     if (userId.value) {
-      await supabase.from('voice_baselines').upsert(
+      // Supabase doesn't throw on a query error by default — it resolves
+      // with { error } set, silently, so this has to check it explicitly.
+      // Without this, an RLS or network failure here would still show the
+      // "Your baseline is set!" screen while no row was actually saved,
+      // leaving the navbar's dot (which reads the real table) permanently
+      // stuck showing "not set" with nothing on screen explaining why.
+      const { error } = await supabase.from('voice_baselines').upsert(
         { account_id: userId.value, answers: toPlain(baselineAnswers) },
         { onConflict: 'account_id' }
       )
+      if (error) throw error
     }
     hasBaseline.value = true
+    sharedHasBaseline.value = true
     baselineStep.value = 'complete'
   } catch (err) {
     console.error('Failed to save baseline', err)
@@ -1309,10 +1503,6 @@ const InsightIcon = (props) => {
   gap: 16px;
 }
 
-.page-inner-wide {
-  max-width: 760px;
-}
-
 /* ── Shared bits ── */
 .page-topbar {
   position: fixed;
@@ -1357,6 +1547,25 @@ const InsightIcon = (props) => {
 
 .card-head strong { display: block; font-size: 14px; color: #1a1a2e; }
 .card-head span { display: block; font-size: 11.5px; color: #8b96ad; margin-top: 1px; }
+
+/* Fully self-contained rather than relying on .task-badge/.task-badge-done —
+   ".card-head span" (a class+type selector) outranks those single-class
+   rules regardless of source order, which was why an earlier inline version
+   of this badge rendered oversized and wrapped onto its own line. */
+.card-head .head-corner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2f9e52;
+  background: #e8f6ec;
+  border-radius: 20px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 
 .icon-wrap {
   border-radius: 12px;
@@ -1449,91 +1658,7 @@ const InsightIcon = (props) => {
   margin: 10px 0 0;
 }
 
-/* ── Member: order guide card ── */
-.guide-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  text-align: center;
-  padding: 22px 24px;
-}
-
-.guide-track {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.guide-step {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  width: 92px;
-}
-
-.guide-step-num {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: #eef1f8;
-  color: #8b96ad;
-  font-size: 13px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.guide-step.done .guide-step-num {
-  background: linear-gradient(135deg, #a5c4f7 0%, #6594e4 100%);
-  color: #fff;
-}
-
-.guide-step-label {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #6b7690;
-  line-height: 1.3;
-}
-
-.guide-step.done .guide-step-label { color: #1a1a2e; }
-
-.guide-step-tag {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: #8b96ad;
-  background: #eef1f8;
-  padding: 2px 8px;
-  border-radius: 8px;
-}
-
-.guide-step-tag-required { color: #c07a1f; background: #fdf1e0; }
-
-.guide-arrow {
-  color: #c3cee3;
-  font-size: 16px;
-  margin-top: 6px;
-}
-
-.guide-text {
-  font-size: 12.5px;
-  color: #6b7690;
-  margin: 0;
-}
-
-/* ── Member: two-card layout ── */
-.member-card-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-
+/* ── Member: single entry-specific task card ── */
 .member-task-card {
   display: flex;
   flex-direction: column;
@@ -1574,21 +1699,7 @@ const InsightIcon = (props) => {
   gap: 4px;
 }
 
-.task-title { font-size: 17px; font-weight: 700; color: #1a1a2e; margin: 0; display: flex; align-items: center; gap: 8px; }
-
-.step-num-badge {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #eaf1ff;
-  color: #3d6fd1;
-  font-size: 11px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
+.task-title { font-size: 17px; font-weight: 700; color: #1a1a2e; margin: 0; }
 .task-desc { font-size: 13px; color: #8b96ad; line-height: 1.6; margin: 0; flex: 1; }
 
 .member-task-card .btn-primary.sm,
@@ -1604,12 +1715,94 @@ const InsightIcon = (props) => {
   font-size: 15px;
 }
 
-.result-cta-hint {
+/* ── Member: step tracker + the two forms side by side ── */
+.stepper-card {
+  padding: 22px 24px 18px;
+}
+
+.stepper-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.step-circle {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #a5c4f7 0%, #6594e4 100%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.step-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1a1a2e;
+  white-space: nowrap;
+}
+
+.step:not(.done) .step-label { color: #8b96ad; }
+
+.step-arrow {
+  color: #c3cee3;
+  font-size: 13px;
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.stepper-status {
   text-align: center;
   font-size: 12px;
   color: #8b96ad;
-  margin: 10px 0 0;
+  margin: 12px 0 0;
 }
+
+.dual-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.mini-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px;
+}
+
+.mini-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.mini-card-title { font-size: 14.5px; font-weight: 700; color: #1a1a2e; margin: 2px 0 0; }
+.mini-card-desc { font-size: 12px; color: #8b96ad; line-height: 1.55; margin: 0; flex: 1; }
+
+.mini-card .btn-primary.sm,
+.mini-card .btn-outline.sm {
+  width: 100%;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.btn-outline.sm { padding: 9px 16px; font-size: 12.5px; }
 
 /* ── Buttons ── */
 .btn-primary {
@@ -2023,7 +2216,14 @@ const InsightIcon = (props) => {
   background: #fff;
   border-radius: 22px;
   box-shadow: 0 20px 60px rgba(20, 30, 60, 0.3);
-  padding: 26px;
+  /* No padding here on purpose — the sticky head and the scrollable body
+     below carry their own, so the sticky head can sit flush against the
+     panel's actual top edge with nothing to bleed past. (A negative-margin
+     "bleed" was tried first so .modal-panel could keep uniform padding, but
+     it fought the panel's own border-radius clipping and left a sliver of
+     backdrop showing at the top corners once scrolled — this is simpler
+     and has no edge cases.) */
+  padding: 0;
   width: 100%;
   max-width: 620px;
   max-height: 88vh;
@@ -2034,6 +2234,31 @@ const InsightIcon = (props) => {
 @keyframes panelIn {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Pinned to the top of .modal-panel's own scroll area (not the page) — the
+   close button and section progress stay put while the questions below
+   scroll underneath, instead of scrolling away with them. Flush against the
+   panel's top/left/right edges since .modal-panel itself has no padding. */
+.modal-sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  padding: 20px 26px 14px;
+  border-radius: 22px 22px 0 0;
+}
+
+.modal-sticky-head .card-head {
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+.modal-sticky-head .progress-row { margin-bottom: 6px; }
+.modal-sticky-head .progress-track { margin-bottom: 0; }
+
+.modal-scroll-body {
+  padding: 0 26px 26px;
 }
 
 .modal-close {
@@ -2143,13 +2368,45 @@ const InsightIcon = (props) => {
 /* ── Responsive ── */
 @media (max-width: 560px) {
   .page-topbar { top: 16px; left: 16px; }
-  .card, .modal-panel { padding: 18px; }
-  .member-card-grid { grid-template-columns: 1fr; }
+  .card { padding: 18px; }
   .nav-row { flex-direction: column-reverse; }
   .btn-outline, .btn-primary.sm { width: 100%; justify-content: center; }
   .modal-backdrop { padding: 0; align-items: flex-end; }
   .modal-panel { max-width: 100%; max-height: 92vh; border-radius: 22px 22px 0 0; }
+  .modal-sticky-head { padding: 16px 18px 12px; border-radius: 22px 22px 0 0; }
+  .modal-scroll-body { padding: 0 18px 18px; }
 
   /* Keep the close-confirmation as a small centered dialog, not a bottom sheet */
+
+  /* The horizontal step tracker doesn't fit 3 full labels on a narrow
+     screen without either wrapping each label to 2 lines or scrolling
+     sideways with the ends cut off — neither reads well. Stacking the
+     steps vertically instead shows all three labels in full, connected by
+     a thin line through the circles, with no scrolling needed. */
+  .stepper-row {
+    flex-direction: column;
+    align-items: stretch;
+    overflow-x: visible;
+    gap: 0;
+  }
+  .step {
+    position: relative;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 0;
+  }
+  .step-label { white-space: normal; font-size: 13.5px; }
+  .step-arrow { display: none; }
+  .step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 12px;
+    top: 33px;
+    bottom: -6px;
+    width: 2px;
+    background: #e3e9f5;
+  }
+  .step.done:not(:last-child)::after { background: #a5c4f7; }
+  .dual-card-grid { grid-template-columns: 1fr; }
 }
 </style>

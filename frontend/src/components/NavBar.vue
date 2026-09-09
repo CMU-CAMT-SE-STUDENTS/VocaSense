@@ -8,7 +8,7 @@
 
       <!-- menu for Desktop -->
       <div class="nav-links desktop-only">
-        <a href="#" class="nav-link" :class="{ active: isHome }" @click.prevent="handleScroll('top')">Home</a>
+        <a href="#" class="nav-link active" @click.prevent="handleScroll('top')">Home</a>
         <a href="#how-it-works" class="nav-link" @click.prevent="handleScroll('how-it-works')">How it Works</a>
         <a v-if="!user" href="#" class="nav-link" @click.prevent="goToSignUp">Sign up</a>
       </div>
@@ -19,6 +19,7 @@
         <div v-if="user" class="avatar-container" v-click-outside="closeProfileMenu">
           <div class="avatar-gradient" @click="toggleProfileMenu">
             {{ firstLetter }}
+            <span v-if="!hasBaseline" class="notify-dot" aria-hidden="true"></span>
           </div>
           <!-- Profile Dropdown -->
           <div v-if="isProfileMenuOpen" class="avatar-dropdown">
@@ -38,7 +39,8 @@
                 <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M9 12h6M9 16h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
               </svg>
-              Self-Assessment Form
+              Set Baseline
+              <span v-if="!hasBaseline" class="notify-dot-inline" aria-hidden="true"></span>
             </button>
             <hr class="dropdown-divider" />
             <button class="btn-dropdown-logout" @click="handleLogout">
@@ -70,6 +72,7 @@
         <div v-if="user" class="mobile-avatar-container" v-click-outside="closeMobileProfileMenu">
           <div class="avatar-gradient" @click="toggleMobileProfileMenu">
             {{ firstLetter }}
+            <span v-if="!hasBaseline" class="notify-dot" aria-hidden="true"></span>
           </div>
           <!-- Mobile Profile Dropdown -->
           <div v-if="isMobileProfileMenuOpen" class="avatar-dropdown">
@@ -88,7 +91,8 @@
                 <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M9 12h6M9 16h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
               </svg>
-              Self-Assessment Form
+              Set Baseline
+              <span v-if="!hasBaseline" class="notify-dot-inline" aria-hidden="true"></span>
             </button>
             <hr class="dropdown-divider" />
             <button class="btn-dropdown-logout" @click="handleLogout">
@@ -141,19 +145,23 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
+import { clearAccountScopedData } from '@/utils/accountScope'
+import { hasBaseline, refreshBaselineStatus } from '@/utils/baselineStatus'
 
 const emit = defineEmits(['scroll-to'])
 const router = useRouter()
-const route = useRoute()
-
-const isHome = computed(() => route.path === '/')
 
 const isMenuOpen = ref(false)
 const isProfileMenuOpen = ref(false)
 const isMobileProfileMenuOpen = ref(false)
 const user = ref(null)
+// Quiet nudge only — no popup. A small dot on the avatar and next to "Set
+// Baseline" whenever the signed-in member hasn't set one yet; disappears the
+// moment it's set. `hasBaseline` is shared app-wide state (see
+// utils/baselineStatus.js) — ImproveResultView flips it the instant a save
+// succeeds, so this doesn't have to guess when to re-check.
 
 const username = computed(() => {
   if (!user.value) return ''
@@ -175,7 +183,7 @@ const goToAssessment = () => {
   closeMenu()
   closeProfileMenu()
   closeMobileProfileMenu()
-  router.push('/improve-result')
+  router.push({ path: '/improve-result', query: { entry: 'baseline' } })
 }
 
 const toggleProfileMenu = (event) => {
@@ -215,15 +223,22 @@ const handleLogout = async () => {
   closeProfileMenu()
   closeMobileProfileMenu()
   await supabase.auth.signOut()
+  // Wipe this account's cached baseline/assessment answers and last voice
+  // analysis result immediately, so whoever uses this browser next (guest
+  // or a different account) never sees them, even for an instant before the
+  // next page's own account-scope check would have caught it.
+  clearAccountScopedData()
   router.push('/?loggedOut=true')
 }
 
 onMounted(async () => {
   const { data } = await supabase.auth.getSession()
   user.value = data.session?.user ?? null
+  await refreshBaselineStatus(user.value?.id)
 
   supabase.auth.onAuthStateChange((_event, session) => {
     user.value = session?.user ?? null
+    refreshBaselineStatus(user.value?.id)
   })
 })
 
@@ -343,6 +358,28 @@ const vClickOutside = {
 .avatar-gradient:hover {
   transform: scale(1.05);
   box-shadow: 0 4px 12px rgba(101, 148, 228, 0.35);
+}
+
+/* Quiet "baseline not set yet" nudge — no text, no dismiss, just gone once set */
+.notify-dot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #FF7A59;
+  border: 2px solid #ffffff;
+  pointer-events: none;
+}
+
+.notify-dot-inline {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #FF7A59;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .avatar-dropdown {
