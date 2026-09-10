@@ -379,7 +379,10 @@
                   <button v-if="step < sections.length" class="btn-primary sm" type="button" :disabled="!isSectionComplete" @click="step++">
                     Next <span aria-hidden="true">&rarr;</span>
                   </button>
-                  <button v-else class="btn-primary sm" type="button" :disabled="!isSectionComplete" @click="submitAssessment">Submit</button>
+                  <button v-else class="btn-primary sm" type="button" :disabled="!isSectionComplete || isSubmittingAssessment" @click="submitAssessment">
+                    <span v-if="isSubmittingAssessment" class="btn-spinner" aria-hidden="true"></span>
+                    {{ isSubmittingAssessment ? 'Saving...' : 'Submit' }}
+                  </button>
                 </div>
               </template>
             </div>
@@ -565,7 +568,10 @@
                   <button v-if="baselineStep < visibleBaselineSections.length" class="btn-primary sm" type="button" :disabled="!isBaselineSectionComplete" @click="baselineNext">
                     Next <span aria-hidden="true">&rarr;</span>
                   </button>
-                  <button v-else class="btn-primary sm" type="button" :disabled="!isBaselineSectionComplete" @click="baselineNext">Save</button>
+                  <button v-else class="btn-primary sm" type="button" :disabled="!isBaselineSectionComplete || isSavingBaseline" @click="baselineNext">
+                    <span v-if="isSavingBaseline" class="btn-spinner" aria-hidden="true"></span>
+                    {{ isSavingBaseline ? 'Saving...' : 'Save' }}
+                  </button>
                 </div>
               </template>
             </div>
@@ -662,6 +668,12 @@ const assessmentDoneForRecording = ref(false)
 const assessmentSaveError = ref(false)
 const baselineSaveError = ref(false)
 const userId = ref(null)
+// While the Supabase save is in flight for the last section's Submit/Save
+// click — the button switches to a spinner + "Saving..." label and disables
+// itself, so a slow connection doesn't look like nothing happened (and a
+// second click can't fire the upsert twice).
+const isSubmittingAssessment = ref(false)
+const isSavingBaseline = ref(false)
 
 // Strips Vue reactivity before handing an object to Supabase (JSONB column) —
 // a raw reactive proxy serializes fine via JSON.stringify, but this keeps the
@@ -1120,7 +1132,9 @@ function goBack() {
 }
 
 async function submitAssessment() {
+  if (isSubmittingAssessment.value) return
   assessmentSaveError.value = false
+  isSubmittingAssessment.value = true
   try {
     saveJSON(assessmentStorageKey(recordingKey.value), answers)
     if (userId.value) {
@@ -1139,6 +1153,8 @@ async function submitAssessment() {
   } catch (err) {
     console.error('Failed to save assessment', err)
     assessmentSaveError.value = true
+  } finally {
+    isSubmittingAssessment.value = false
   }
 }
 
@@ -1422,7 +1438,9 @@ async function baselineNext() {
     return
   }
 
+  if (isSavingBaseline.value) return
   baselineSaveError.value = false
+  isSavingBaseline.value = true
   try {
     saveJSON(LS_BASELINE_KEY, baselineAnswers)
     if (userId.value) {
@@ -1444,6 +1462,8 @@ async function baselineNext() {
   } catch (err) {
     console.error('Failed to save baseline', err)
     baselineSaveError.value = true
+  } finally {
+    isSavingBaseline.value = false
   }
 }
 
@@ -1826,6 +1846,24 @@ const InsightIcon = (props) => {
 .btn-primary:hover { opacity: 0.9; }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-primary:disabled:hover { opacity: 0.4; }
+
+/* Submit/Save while the Supabase save is in flight — a spinner in place of
+   the button's own text so a slow connection doesn't read as "did nothing
+   happen?", and the disabled state on the button itself blocks a second
+   click from firing a duplicate save. */
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  animation: btnSpin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes btnSpin {
+  to { transform: rotate(360deg); }
+}
 
 .btn-outline {
   display: inline-flex;
