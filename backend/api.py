@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from controller import analyze_uploaded_voice
 from input_validator import analyze_voice_sample
+from input_validator_v2 import validate_content as analyze_voice_sample_v2
 
 app = FastAPI(title="VocaSense API")
 
@@ -47,6 +48,26 @@ async def validate_voice_sample(file: UploadFile = File(...)):
 
     try:
         return analyze_voice_sample(content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v2/voice/validate")
+async def validate_voice_sample_v2(file: UploadFile = File(...)):
+    """Candidate validator: canonical 16 kHz + composite evidence.
+
+    The original /api/voice/validate endpoint remains unchanged for rollout
+    comparison and rollback.
+    """
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="No audio file was uploaded.")
+    content_type = (file.content_type or "").lower()
+    filename = (file.filename or "").lower()
+    if "wav" not in content_type and not filename.endswith(".wav"):
+        raise HTTPException(status_code=415, detail="Please upload WAV audio.")
+    try:
+        return analyze_voice_sample_v2(content)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
