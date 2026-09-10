@@ -696,24 +696,38 @@ onMounted(async () => {
   // Supabase is the source of truth across devices when reachable — it
   // overrides the local cache above rather than merging with it, so a member
   // who last edited on another device sees that copy, not a stale local one.
+  // Baseline is per-account (needs userId); the per-recording assessment is
+  // per-analysis (needs analysisId) and is fetched regardless of sign-in
+  // status, since a guest's recording gets an analysis row too.
+  const remoteLoads = []
   if (userId.value) {
+    remoteLoads.push(
+      supabase.from('member_baseline').select('answers').eq('user_id', userId.value).maybeSingle()
+        .then(({ data }) => {
+          if (data?.answers) {
+            Object.assign(baselineAnswers, data.answers)
+            hasBaseline.value = true
+            sharedHasBaseline.value = true
+            saveJSON(LS_BASELINE_KEY, baselineAnswers)
+          }
+        })
+    )
+  }
+  if (analysisId.value) {
+    remoteLoads.push(
+      supabase.from('recording_assessment').select('answers').eq('analysis_id', analysisId.value).maybeSingle()
+        .then(({ data }) => {
+          if (data?.answers) {
+            Object.assign(answers, data.answers)
+            assessmentDoneForRecording.value = true
+            saveJSON(assessmentStorageKey(recordingKey.value), answers)
+          }
+        })
+    )
+  }
+  if (remoteLoads.length) {
     try {
-      const [{ data: remoteBaseline }, { data: remoteAssessment }] = await Promise.all([
-        supabase.from('voice_baselines').select('answers').eq('account_id', userId.value).maybeSingle(),
-        supabase.from('voice_assessments').select('answers')
-          .eq('account_id', userId.value).eq('recording_key', recordingKey.value).maybeSingle()
-      ])
-      if (remoteBaseline?.answers) {
-        Object.assign(baselineAnswers, remoteBaseline.answers)
-        hasBaseline.value = true
-        sharedHasBaseline.value = true
-        saveJSON(LS_BASELINE_KEY, baselineAnswers)
-      }
-      if (remoteAssessment?.answers) {
-        Object.assign(answers, remoteAssessment.answers)
-        assessmentDoneForRecording.value = true
-        saveJSON(assessmentStorageKey(recordingKey.value), answers)
-      }
+      await Promise.all(remoteLoads)
     } catch (err) {
       console.error('Failed to load saved answers from Supabase', err)
     }
@@ -888,10 +902,20 @@ onUnmounted(() => {
   document.body.style.overflow = ''
 })
 
-// Identifies "this recording" for the per-recording assessment — stable
-// across popup open/close so re-opening after Submit shows the same saved
-// answers instead of a blank form.
+// Identifies "this recording" for the per-recording assessment's local
+// cache key — stable across popup open/close so re-opening after Submit
+// shows the same saved answers instead of a blank form.
 const recordingKey = computed(() => sessionStorage.getItem('vocasense:lastVoiceAnalysisAt') || 'unknown')
+
+// The Supabase row id for this recording's analysis (set by AnalysisView
+// once /api/voice/analyze finishes and the row is saved) — this, not
+// recordingKey, is what recording_assessment.analysis_id actually links to.
+// Can be null if the save failed or hasn't happened yet (e.g. offline); the
+// assessment still saves locally in that case, same as when signed out.
+const analysisId = computed(() => {
+  const raw = sessionStorage.getItem('vocasense:lastAnalysisId')
+  return raw ? Number(raw) : null
+})
 
 // UC-16 precondition: "About This Recording" only makes sense once a
 // recording exists. Gating the card itself (button routes to /recording
@@ -1123,14 +1147,15 @@ async function submitAssessment() {
   assessmentSaveError.value = false
   try {
     saveJSON(assessmentStorageKey(recordingKey.value), answers)
-    if (userId.value) {
-      const { error } = await supabase.from('voice_assessments').upsert(
+    // Tied to the analysis row, not the account — a guest's recording gets
+    // this saved too, as long as its analysis was successfully persisted.
+    if (analysisId.value) {
+      const { error } = await supabase.from('recording_assessment').upsert(
         {
-          account_id: userId.value,
-          recording_key: recordingKey.value,
+          analysis_id: analysisId.value,
           answers: toPlain(answers)
         },
-        { onConflict: 'account_id,recording_key' }
+        { onConflict: 'analysis_id' }
       )
       if (error) throw error
     }
@@ -1432,9 +1457,9 @@ async function baselineNext() {
       // "Your baseline is set!" screen while no row was actually saved,
       // leaving the navbar's dot (which reads the real table) permanently
       // stuck showing "not set" with nothing on screen explaining why.
-      const { error } = await supabase.from('voice_baselines').upsert(
-        { account_id: userId.value, answers: toPlain(baselineAnswers) },
-        { onConflict: 'account_id' }
+      const { error } = await supabase.from('member_baseline').upsert(
+        { user_id: userId.value, answers: toPlain(baselineAnswers) },
+        { onConflict: 'user_id' }
       )
       if (error) throw error
     }

@@ -55,6 +55,7 @@ import brainIcon from '@/assets/icons/Brain.png'
 import searchIcon from '@/assets/icons/Search.png'
 import chartIcon from '@/assets/icons/Bar Chart.png'
 import { takePendingVoiceAnalysisInput } from '@/utils/voiceAnalysisStore'
+import { saveAnalysisResult } from '@/utils/analysisPersistence'
 
 const router = useRouter()
 const goBack = () => router.push('/')
@@ -259,6 +260,17 @@ async function analyzePendingRecording(input) {
     }, 300)
   }
   console.log('[voice_analysis]', result)
+
+  // Persist this result to Supabase (under the signed-in account, or an
+  // anonymous guest session) so it shows up in History and can be linked to
+  // the "About This Recording" assessment. Best-effort — a save failure
+  // must not block the member from seeing the result they already have.
+  const analysisId = await saveAnalysisResult(result)
+  if (analysisId != null) {
+    sessionStorage.setItem('vocasense:lastAnalysisId', String(analysisId))
+  } else {
+    sessionStorage.removeItem('vocasense:lastAnalysisId')
+  }
 }
 
 function completeStepsFromStoredResult(result) {

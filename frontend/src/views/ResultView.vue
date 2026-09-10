@@ -153,6 +153,7 @@ import { ref, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import { syncAccountScope } from '@/utils/accountScope'
+import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, buildRecommendations } from '@/utils/voiceInsights'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
 import AudioIcon from '@/assets/icons/audio.png'
 import WaterIcon from '@/assets/icons/water.png'
@@ -211,27 +212,9 @@ const improveLabel = computed(() =>
 )
 
 // ── Condition → display copy ────────────────────────────────────────
-const OVERALL_META = {
-  healthy: { level: 'low', badge: 'No Vocal Strain Detected', subtitle: 'Your voice sounds healthy — keep up the good habits!' },
-  moderate: { level: 'moderate', badge: 'Moderate Vocal Strain', subtitle: 'Your voice shows some strain. Try the tips below to help it recover.' },
-  warning: { level: 'high', badge: 'Vocal Strain Detected', subtitle: "Your voice shows signs of strain. Try the tips below, and see a specialist if it doesn't improve." }
-}
-
-const CLARITY_META = {
-  clear: { value: 'Clear', level: 'low' },
-  slightly_unclear: { value: 'Slightly Unclear', level: 'moderate' },
-  unclear: { value: 'Unclear', level: 'high' }
-}
-const STABILITY_META = {
-  stable: { value: 'Stable', level: 'low' },
-  slightly_unstable: { value: 'Slightly Unstable', level: 'moderate' },
-  unstable: { value: 'Unstable', level: 'high' }
-}
-const HOARSENESS_META = {
-  low: { value: 'Low', level: 'low' },
-  moderate: { value: 'Moderate', level: 'moderate' },
-  high: { value: 'High', level: 'high' }
-}
+// OVERALL_META / CLARITY_META / STABILITY_META / HOARSENESS_META live in
+// @/utils/voiceInsights so History (past recordings) renders identical
+// labels/colors for the same conditions instead of a second, driftable copy.
 
 // Legend content for each metric's info popover (opened via the ⓘ button).
 const METRIC_INFO = {
@@ -330,100 +313,14 @@ const voiceBaseline = computed(() => {
 })
 
 // Backend returns scores/conditions but no coaching copy, so recommendations
-// are derived client-side from the same conditions shown in the metric cards,
-// plus this recording's self-assessment answers (if the user submitted one) —
-// those can surface tips the acoustic analysis alone wouldn't catch, e.g. a
-// healthy-sounding recording where the user reported severe symptoms.
-const recommendations = computed(() => {
-  if (!quality.value) return []
-  const overall = quality.value.voice_quality.voice_condition
-  const hoarse = quality.value.hoarseness_risk.hoarseness_condition
-  const stability = quality.value.stability.stability_condition
-  const clarity = quality.value.clarity.clarity_condition
-  const items = []
-
-  if (overall === 'healthy') {
-    items.push({ kind: 'water', text: 'Keep drinking plenty of water throughout the day', priority: 'moderate' })
-    items.push({ kind: 'warmup', text: 'Continue regular vocal warm-ups to stay in good shape', priority: 'moderate' })
-  } else {
-    if (hoarse === 'high' || overall === 'warning') {
-      items.push({ kind: 'rest', text: 'Give your voice a rest for 2-3 hours', priority: 'high' })
-      items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'high' })
-    } else {
-      items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'moderate' })
-    }
-
-    if (stability !== 'stable') {
-      items.push({ kind: 'voice', text: 'Avoid shouting or speaking loudly', priority: 'moderate' })
-    }
-
-    if (clarity !== 'clear') {
-      items.push({ kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' })
-    }
-  }
-
-  const assessment = selfAssessment.value
-  if (assessment) {
-    const severityScores = assessment.symptoms ? Object.values(assessment.symptoms).filter((v) => v !== null) : []
-    const maxSeverity = severityScores.length ? Math.max(...severityScores) : 0
-    if (maxSeverity >= 4) {
-      items.push({ kind: 'specialist', text: 'Your reported symptoms are severe — consider seeing a specialist if this continues', priority: 'high' })
-    }
-
-    const hoursSlept = Number(assessment.hoursSlept)
-    if (assessment.hoursSlept !== '' && !Number.isNaN(hoursSlept) && hoursSlept < 6 && !items.some((i) => i.kind === 'sleep')) {
-      items.push({ kind: 'sleep', text: 'You reported less sleep than usual — try to rest more before your next recording', priority: 'moderate' })
-    }
-
-    if (assessment.alcohol === 'yes' || assessment.smoked === 'yes') {
-      items.push({ kind: 'rest', text: 'Avoid alcohol and smoking before recording — they can affect your voice', priority: 'moderate' })
-    }
-
-    const glassesToday = Number(assessment.glassesToday)
-    if (assessment.glassesToday !== '' && !Number.isNaN(glassesToday) && glassesToday < 6 && !items.some((i) => i.kind === 'water')) {
-      items.push({ kind: 'water', text: 'You reported drinking less water than recommended today — try to increase your intake', priority: 'moderate' })
-    }
-
-    const voiceUse = assessment.regularVoiceUse || []
-    const environment = assessment.environment || []
-    if (
-      (voiceUse.includes('Shout or yell') || voiceUse.includes('Speak loudly') || environment.includes('Noisy')) &&
-      !items.some((i) => i.kind === 'voice')
-    ) {
-      items.push({ kind: 'voice', text: 'You reported shouting, speaking loudly, or a noisy environment — try to lower your volume', priority: 'moderate' })
-    }
-  }
-
-  // Baseline-derived tips are long-term risk factors, not about this specific
-  // recording, so each is worded as "your baseline shows..." to stay distinct
-  // from the acoustic- and assessment-based tips above rather than blending in
-  // unexplained (e.g. quietly lowering a threshold would look like the system
-  // mis-measured this recording).
-  const baseline = voiceBaseline.value
-  if (baseline) {
-    if (baseline.smokingStatus === 'current' || baseline.alcoholStatus === 'yes') {
-      items.push({ kind: 'rest', text: 'Your baseline shows regular smoking or alcohol use — both are long-term risk factors for vocal health', priority: 'moderate' })
-    }
-
-    const hoursVoiceHome = Number(baseline.hoursVoiceHome)
-    const hoursVoiceWork = Number(baseline.hoursVoiceWork)
-    const totalDailyVoiceHours = (Number.isNaN(hoursVoiceHome) ? 0 : hoursVoiceHome) + (Number.isNaN(hoursVoiceWork) ? 0 : hoursVoiceWork)
-    if (totalDailyVoiceHours >= 6) {
-      items.push({ kind: 'warmup', text: 'Your baseline shows heavy daily voice use — take short vocal breaks throughout the day', priority: 'moderate' })
-    }
-
-    const baselineVoiceUse = baseline.regularVoiceUse || []
-    const baselineEnvironment = [...(baseline.homeEnvironment || []), ...(baseline.workEnvironment || [])]
-    if (
-      (baselineVoiceUse.includes('Shout or yell') || baselineVoiceUse.includes('Speak loudly') || baselineEnvironment.includes('Noisy')) &&
-      !items.some((i) => i.kind === 'voice')
-    ) {
-      items.push({ kind: 'voice', text: 'Your baseline shows frequent loud speaking or noisy environments — these add up to long-term vocal strain', priority: 'moderate' })
-    }
-  }
-
-  return items.slice(0, 6)
-})
+// are derived (in @/utils/voiceInsights, shared with History) from the same
+// conditions shown in the metric cards, plus this recording's self-assessment
+// answers and the member's baseline — those can surface tips the acoustic
+// analysis alone wouldn't catch, e.g. a healthy-sounding recording where the
+// user reported severe symptoms.
+const recommendations = computed(() =>
+  buildRecommendations(quality.value, selfAssessment.value, voiceBaseline.value)
+)
 
 // ── Icons ────────────────────────────────────────────────────────────
 const StatusIcon = (props) => {
