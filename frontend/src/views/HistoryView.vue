@@ -479,12 +479,23 @@ function chartDomain() {
 // share this same domain.
 function chartPoints() {
   const items = scoreFiltered.value
+  const usableW = CHART_W - CHART_PAD * 2
+  const usableH = CHART_H - CHART_PAD_Y * 2
+  // A single session has no real span to plot against (chartDomain needs two
+  // dates to define a range), so without this the whole chart used to render
+  // with zero points — no dot at all — even though the stat boxes above it
+  // (which read scoreFiltered directly, not chartPoints) correctly counted
+  // it. Center the lone point instead of dropping it.
+  if (items.length === 1) {
+    const rec = items[0]
+    const x = CHART_PAD + usableW / 2
+    const y = CHART_PAD_Y + usableH * (1 - rec.score / 100)
+    return [{ x, y, score: rec.score, date: rec.date, time: rec.time }]
+  }
   const domain = chartDomain()
   if (!domain) return null
   const [start, end] = domain
   const span = end - start || 1
-  const usableW = CHART_W - CHART_PAD * 2
-  const usableH = CHART_H - CHART_PAD_Y * 2
   return items.map((rec) => {
     const x = CHART_PAD + usableW * ((rec.date - start) / span)
     const y = CHART_PAD_Y + usableH * (1 - rec.score / 100)
@@ -581,6 +592,11 @@ function formatTick(date) {
 
 const xAxisTicks = computed(() => {
   const items = scoreFiltered.value
+  // Same single-session case as chartPoints above: there's no real domain to
+  // position against, so just center the one tick under the one dot.
+  if (items.length === 1) {
+    return [{ left: 50, label: formatTick(items[0].date) }]
+  }
   const domain = chartDomain()
   if (!domain) return []
   const [start, end] = domain
