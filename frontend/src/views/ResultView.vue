@@ -1,6 +1,11 @@
 <template>
   <div class="result-page">
-    <div class="page-inner" v-if="quality">
+    <div class="page-inner loading-state" v-if="isLoading">
+      <div class="result-spinner"></div>
+      <p>Loading your result...</p>
+    </div>
+
+    <div class="page-inner" v-else-if="quality">
       <div class="topbar">
         <button class="btn-back" @click="router.push('/')">
           <span class="back-arrow">&larr;</span> Back To Home
@@ -30,7 +35,7 @@
       </div>
 
       <section class="status-card">
-        <div class="status-icon" :class="'risk-bg-' + overallMeta.level">
+        <div class="status-icon" :class="statusIconClass">
           <StatusIcon :level="overallMeta.level" />
         </div>
         <span class="status-badge" :class="'risk-bg-' + overallMeta.level + ' risk-text-' + overallMeta.level">{{ overallMeta.badge }}</span>
@@ -147,6 +152,7 @@
 import { ref, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
+import { syncAccountScope } from '@/utils/accountScope'
 import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, buildRecommendations } from '@/utils/voiceInsights'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
 import AudioIcon from '@/assets/icons/audio.png'
@@ -155,22 +161,41 @@ import MicrophoneIcon from '@/assets/icons/Microphone.png'
 import SleepingBedIcon from '@/assets/icons/sleeping_bed.png'
 import SparklesIcon from '@/assets/icons/Sparkles_1.png'
 import MuteIcon from '@/assets/icons/mute.png'
+import CheckMarkIcon from '@/assets/icons/check_mark.png'
 
 const router = useRouter()
 const result = ref(null)
 const isMember = ref(false)
+const isLoading = ref(true)
 
 onMounted(async () => {
-  const stateResult = window.history.state?.voiceAnalysis
-  const storedResult = sessionStorage.getItem('vocasense:lastVoiceAnalysis')
   try {
-    result.value = stateResult || (storedResult ? JSON.parse(storedResult) : null)
-  } catch {
-    result.value = stateResult || null
-  }
+    // Keep whatever this navigation carried (freshest, and always this
+    // account's own recording) before touching anything account-scoped.
+    const stateResult = window.history.state?.voiceAnalysis
 
-  const { data } = await supabase.auth.getSession()
-  isMember.value = !!data.session?.user
+    const { data } = await supabase.auth.getSession()
+    isMember.value = !!data.session?.user
+
+    // Must run before the sessionStorage fallback read below — if the
+    // signed-in account differs from whoever last left data on this
+    // browser, this wipes the stale cache so it's never mistaken for this
+    // account's result.
+    syncAccountScope(data.session?.user?.id ?? null)
+
+    if (stateResult) {
+      result.value = stateResult
+    } else {
+      const storedResult = sessionStorage.getItem('vocasense:lastVoiceAnalysis')
+      try {
+        result.value = storedResult ? JSON.parse(storedResult) : null
+      } catch {
+        result.value = null
+      }
+    }
+  } finally {
+    isLoading.value = false
+  }
 })
 
 const quality = computed(() => result.value?.quality || null)
@@ -220,6 +245,14 @@ const METRIC_INFO = {
 }
 
 const overallMeta = computed(() => OVERALL_META[quality.value?.voice_quality?.voice_condition] || OVERALL_META.moderate)
+
+// Same icon-background rule History uses for its "Today's Result" icon
+// (riskIconBgClass in HistoryView.vue): low gets the green gradient chip,
+// moderate/high stay the flat risk-bg-* pastel — so this icon matches that
+// page's instead of inventing its own look.
+const statusIconClass = computed(() =>
+  overallMeta.value.level === 'low' ? 'status-icon-healthy' : 'risk-bg-' + overallMeta.value.level
+)
 
 const metrics = computed(() => {
   if (!quality.value) return []
@@ -302,9 +335,9 @@ const StatusIcon = (props) => {
       h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round' })
     ])
   }
-  return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-    h('path', { d: 'm5 13 4 4L19 7', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
-  ])
+  // Same asset History's RiskIcon uses for low risk, instead of a separately
+  // drawn checkmark path, so the two pages show the literal same glyph.
+  return h('img', { src: CheckMarkIcon, alt: '', class: 'glyph-img' })
 }
 
 // Image glyphs on a gradient square: sparkle for clarity, waveform for
@@ -371,6 +404,30 @@ const RecommendationIcon = (props) => {
   gap: 16px;
   padding-top: 80px;
   color: #667085;
+}
+
+.loading-state {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 16px;
+  padding-top: 120px;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.result-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(101, 148, 228, 0.2);
+  border-top-color: #6594e4;
+  animation: resultSpin 0.7s linear infinite;
+}
+
+@keyframes resultSpin {
+  to { transform: rotate(360deg); }
 }
 
 /* ── Top bar ── */
@@ -507,6 +564,11 @@ const RecommendationIcon = (props) => {
   gap: 10px;
 }
 
+/* Same shape/coloring as History's .today-icon (HistoryView.vue) — a plain
+   circle, gradient only for the low/healthy case (.status-icon-healthy,
+   defined below with the exact same gradient values), flat risk-bg-* pastel
+   otherwise — so this reads as the same icon as the History page's, not a
+   separately-invented style. */
 .status-icon {
   width: 56px;
   height: 56px;
@@ -517,6 +579,9 @@ const RecommendationIcon = (props) => {
 }
 
 .status-icon svg, .status-icon .glyph-img { width: 26px; height: 26px; object-fit: contain; }
+
+/* Matches HistoryView.vue's .status-icon-healthy exactly. */
+.status-icon-healthy { background: linear-gradient(135deg, #3fc987, #73d8a5, #a8e8c4); }
 
 .status-badge {
   padding: 5px 14px;
