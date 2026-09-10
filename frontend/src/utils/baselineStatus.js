@@ -15,9 +15,9 @@ export async function refreshBaselineStatus(userId) {
   }
   try {
     const { data, error } = await supabase
-      .from('voice_baselines')
-      .select('account_id')
-      .eq('account_id', userId)
+      .from('member_baseline')
+      .select('user_id')
+      .eq('user_id', userId)
       .maybeSingle()
     if (error) {
       console.error('Failed to check baseline status', error)

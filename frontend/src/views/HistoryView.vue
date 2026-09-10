@@ -2,8 +2,11 @@
   <div class="history-page">
     <Navbar @scroll-to="goHome" />
 
-    <div class="history-container" :class="{ 'history-container-empty': !mockRecords.length }">
-      <template v-if="mockRecords.length">
+    <div class="history-container" :class="{ 'history-container-empty': !recordsLoading && !records.length }">
+      <template v-if="recordsLoading">
+        <div class="history-loading">Loading your history&hellip;</div>
+      </template>
+      <template v-else-if="records.length">
       <header class="welcome-header">
         <h1 class="welcome-title">Welcome back, {{ displayName }}!</h1>
         <p class="welcome-date">{{ formatDate(latestRecord.date) }}</p>
@@ -275,13 +278,9 @@
           </Transition>
         </div>
       </section>
-
-      <p class="history-disclaimer">
-        Sample data shown for preview &mdash; connect your account history to see real results here.
-      </p>
       </template>
 
-      <div v-else class="history-empty">
+      <div v-else-if="!recordsLoading" class="history-empty">
         <div class="history-empty-icon">
           <svg viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 3.5-7.1M3 4v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
@@ -314,6 +313,7 @@ import { ref, computed, watch, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import Navbar from '@/components/NavBar.vue'
 import { supabase } from '@/utils/supabase'
+import { OVERALL_META, buildMetrics, buildRecommendations, qualityFromAnalysisRow } from '@/utils/voiceInsights'
 import CheckMarkIcon from '@/assets/icons/check_mark.png'
 import SparklesIcon from '@/assets/icons/Sparkles_1.png'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
@@ -326,11 +326,64 @@ const router = useRouter()
 const goHome = () => router.push('/')
 
 const displayName = ref('there')
+const records = ref([])
+const recordsLoading = ref(true)
+
+// Turns one `analysis` row (optionally with its linked recording_assessment
+// answers embedded) into the shape the template renders — same shape the
+// Result Dashboard uses for the current recording, so both pages read the
+// same way.
+function mapAnalysisRow(row, baselineAnswers) {
+  const quality = qualityFromAnalysisRow(row)
+  const assessmentRow = Array.isArray(row.recording_assessment) ? row.recording_assessment[0] : row.recording_assessment
+  const meta = OVERALL_META[row.voice_condition] || OVERALL_META.moderate
+  const date = new Date(row.created_at)
+  return {
+    id: row.id,
+    date,
+    time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    risk: meta.level,
+    score: row.voice_quality_score,
+    resultLabel: meta.badge,
+    metrics: buildMetrics(quality),
+    recommendations: buildRecommendations(quality, assessmentRow?.answers, baselineAnswers)
+  }
+}
 
 onMounted(async () => {
   const { data } = await supabase.auth.getSession()
   const user = data.session?.user
   displayName.value = user?.user_metadata?.username || user?.email || 'there'
+
+  if (!user) {
+    recordsLoading.value = false
+    return
+  }
+
+  try {
+    const [{ data: analysisRows, error: analysisError }, { data: baselineRow }] = await Promise.all([
+      supabase
+        .from('analysis')
+        .select(
+          'id, created_at, voice_quality_score, voice_condition, hoarseness_score, hoarseness_condition, ' +
+          'stability_score, stability_condition, clarity_score, clarity_condition, recording_assessment(answers)'
+        )
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false }),
+      supabase.from('member_baseline').select('answers').eq('user_id', user.id).maybeSingle()
+    ])
+    if (analysisError) throw analysisError
+
+    records.value = (analysisRows || []).map((row) => mapAnalysisRow(row, baselineRow?.answers))
+    if (records.value.length) {
+      selectedId.value = records.value.reduce((a, b) => (b.date > a.date ? b : a)).id
+    }
+  } catch (err) {
+    console.error('Failed to load voice analysis history', err)
+    records.value = []
+  } finally {
+    recordsLoading.value = false
+  }
 })
 
 // ── Icons — same treatment as the Result Dashboard: real image assets
@@ -367,153 +420,12 @@ const RecommendationIcon = (props) => {
   return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
 }
 
-// ── Sample data (UI preview only — not wired to a backend yet) ─────
-const mockRecords = [
-  {
-    id: 1,
-    date: new Date(2026, 6, 21),
-    time: '09:14 AM',
-    risk: 'low',
-    score: 92,
-    resultLabel: 'No Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Clear', level: 'low' },
-      { kind: 'stability', label: 'Voice stability', value: 'Stable', level: 'low' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Low', level: 'low' }
-    ],
-    recommendations: [
-      { kind: 'rest', text: 'Give your voice a rest for 2-3 hours', priority: 'high' },
-      { kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'high' },
-      { kind: 'voice', text: 'Avoid shouting or speaking loudly', priority: 'moderate' },
-      { kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 2,
-    date: new Date(2026, 6, 19),
-    time: '10:14 AM',
-    risk: 'moderate',
-    score: 64,
-    resultLabel: 'Mild Vocal Fatigue Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Fair', level: 'moderate' },
-      { kind: 'stability', label: 'Voice stability', value: 'Slightly Uneven', level: 'moderate' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Mild', level: 'moderate' }
-    ],
-    recommendations: [
-      { kind: 'rest', text: 'Rest your voice for at least 4 hours', priority: 'high' },
-      { kind: 'water', text: 'Increase water intake throughout the day', priority: 'high' },
-      { kind: 'voice', text: 'Avoid whispering, which can strain your voice', priority: 'moderate' },
-      { kind: 'warmup', text: 'Do gentle humming exercises before speaking', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 5,
-    date: new Date(2026, 6, 17),
-    time: '08:30 AM',
-    risk: 'moderate',
-    score: 58,
-    resultLabel: 'Mild Vocal Fatigue Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Fair', level: 'moderate' },
-      { kind: 'stability', label: 'Voice stability', value: 'Slightly Uneven', level: 'moderate' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Mild', level: 'moderate' }
-    ],
-    recommendations: [
-      { kind: 'rest', text: 'Rest your voice for at least 3 hours', priority: 'high' },
-      { kind: 'water', text: 'Increase water intake throughout the day', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 6,
-    date: new Date(2026, 6, 14),
-    time: '07:50 AM',
-    risk: 'low',
-    score: 90,
-    resultLabel: 'No Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Clear', level: 'low' },
-      { kind: 'stability', label: 'Voice stability', value: 'Stable', level: 'low' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Low', level: 'low' }
-    ],
-    recommendations: [
-      { kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 7,
-    date: new Date(2026, 6, 10),
-    time: '09:00 AM',
-    risk: 'low',
-    score: 85,
-    resultLabel: 'No Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Clear', level: 'low' },
-      { kind: 'stability', label: 'Voice stability', value: 'Stable', level: 'low' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Low', level: 'low' }
-    ],
-    recommendations: [
-      { kind: 'water', text: 'Keep water nearby during long calls', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 8,
-    date: new Date(2026, 6, 4),
-    time: '10:05 AM',
-    risk: 'high',
-    score: 42,
-    resultLabel: 'Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Rough', level: 'high' },
-      { kind: 'stability', label: 'Voice stability', value: 'Unstable', level: 'high' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'High', level: 'high' }
-    ],
-    recommendations: [
-      { kind: 'rest', text: 'Rest your voice completely for the rest of the day', priority: 'high' },
-      { kind: 'voice', text: 'Avoid speaking loudly or for long periods', priority: 'high' }
-    ]
-  },
-  {
-    id: 3,
-    date: new Date(2026, 5, 28),
-    time: '09:14 AM',
-    risk: 'low',
-    score: 88,
-    resultLabel: 'No Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Clear', level: 'low' },
-      { kind: 'stability', label: 'Voice stability', value: 'Stable', level: 'low' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Low', level: 'low' }
-    ],
-    recommendations: [
-      { kind: 'water', text: 'Keep water nearby during long calls', priority: 'moderate' },
-      { kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 4,
-    date: new Date(2026, 5, 20),
-    time: '10:14 AM',
-    risk: 'high',
-    score: 38,
-    resultLabel: 'Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Rough', level: 'high' },
-      { kind: 'stability', label: 'Voice stability', value: 'Unstable', level: 'high' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'High', level: 'high' }
-    ],
-    recommendations: [
-      { kind: 'rest', text: 'Rest your voice completely for the rest of the day', priority: 'high' },
-      { kind: 'water', text: 'Drink warm water with honey to soothe your throat', priority: 'high' },
-      { kind: 'voice', text: 'Avoid speaking loudly or for long periods', priority: 'high' },
-      { kind: 'warmup', text: 'See a specialist if strain continues past 3 days', priority: 'moderate' }
-    ]
-  }
-]
 
-const latestRecord = mockRecords.length
-  ? mockRecords.reduce((a, b) => (b.date > a.date ? b : a))
-  : null
+const latestRecord = computed(() =>
+  records.value.length
+    ? records.value.reduce((a, b) => (b.date > a.date ? b : a))
+    : null
+)
 
 // ── Voice Health Score card ─────────────────────────────────────────
 const scoreRanges = ['7 Days', '30 Days', 'All Time']
@@ -529,8 +441,8 @@ function withinRange(record, range, referenceDate) {
 }
 
 const scoreFiltered = computed(() =>
-  mockRecords
-    .filter((r) => withinRange(r, selectedScoreRange.value, latestRecord.date))
+  records.value
+    .filter((r) => withinRange(r, selectedScoreRange.value, latestRecord.value.date))
     .sort((a, b) => a.date - b.date)
 )
 
@@ -716,7 +628,7 @@ const gridLines = computed(() => {
 // ── Record List card ────────────────────────────────────────────────
 const dateFilter = ref('All Time')
 const riskFilter = ref('all')
-const selectedId = ref(latestRecord?.id ?? null)
+const selectedId = ref(null)
 
 // UC-15/SRS-131: on tablet & mobile, tapping a record opens its detail as a
 // full-block overlay in place of the list (closed via the Back button) rather
@@ -774,8 +686,8 @@ const vClickOutside = {
 }
 
 const filteredRecords = computed(() =>
-  mockRecords
-    .filter((r) => withinRange(r, dateFilter.value, latestRecord.date))
+  records.value
+    .filter((r) => withinRange(r, dateFilter.value, latestRecord.value.date))
     .filter((r) => riskFilter.value === 'all' || r.risk === riskFilter.value)
     .sort((a, b) => b.date - a.date)
 )
@@ -1785,6 +1697,14 @@ function formatDate(date) {
   flex: 1;
   justify-content: center;
   min-height: calc(100vh - 64px);
+}
+
+.history-loading {
+  font-size: 14px;
+  font-weight: 500;
+  color: #8b96ad;
+  text-align: center;
+  padding: 64px 16px;
 }
 
 .history-empty {
