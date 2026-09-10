@@ -41,10 +41,6 @@ class AssessmentRequest(BaseModel):
     questionnaire_version: str = Field(default="1.0", min_length=1, max_length=50)
 
 
-class BaselineRequest(AssessmentRequest):
-    analysis_id: int | None = Field(default=None, gt=0)
-
-
 _recommendation_service: RecommendationService | None = None
 
 
@@ -102,55 +98,6 @@ def create_guest_session():
         return {
             "guest_token": session["guest_token"],
             "expires_at": session["expires_at"],
-        }
-    except Exception as error:
-        raise_api_error(error)
-
-
-@app.get("/api/member-baseline")
-def get_member_baseline(
-    authorization: str | None = Header(default=None),
-    x_guest_token: str | None = Header(default=None, alias="X-Guest-Token"),
-):
-    try:
-        service = get_recommendation_service()
-        actor = resolve_actor(service, authorization, x_guest_token)
-        baseline = service.get_member_baseline(actor)
-        if baseline is None:
-            return None
-        return {
-            "answers": baseline.get("answers", {}),
-            "questionnaire_version": baseline.get("questionnaire_version"),
-            "revision": baseline.get("revision"),
-            "created_at": baseline.get("created_at"),
-            "updated_at": baseline.get("updated_at"),
-        }
-    except Exception as error:
-        raise_api_error(error)
-
-
-@app.put("/api/member-baseline")
-def put_member_baseline(
-    request: BaselineRequest,
-    authorization: str | None = Header(default=None),
-    x_guest_token: str | None = Header(default=None, alias="X-Guest-Token"),
-):
-    try:
-        service = get_recommendation_service()
-        actor = resolve_actor(service, authorization, x_guest_token)
-        result = service.save_member_baseline(
-            actor, request.answers, request.questionnaire_version, request.analysis_id
-        )
-        baseline = result["baseline"]
-        return {
-            "baseline": {
-                "answers": baseline.get("answers", {}),
-                "questionnaire_version": baseline.get("questionnaire_version"),
-                "revision": baseline.get("revision"),
-                "created_at": baseline.get("created_at"),
-                "updated_at": baseline.get("updated_at"),
-            },
-            "recommendation": result["recommendation"],
         }
     except Exception as error:
         raise_api_error(error)
