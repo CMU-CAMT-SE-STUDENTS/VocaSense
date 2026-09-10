@@ -24,13 +24,22 @@ export function clearAccountScopedData() {
 // user id (pass null/undefined for guest). If the account differs from
 // whoever last left data behind on this browser, wipes it before anything
 // on the page gets a chance to read it.
+//
+// The very first call ever on a browser (nothing recorded yet, `last` is
+// null) must NOT wipe — there's no previous account to protect against yet,
+// and a guest's own recording/result from moments earlier in this same
+// session would otherwise get deleted the instant this runs, before the
+// user ever gets to see it (e.g. straight after finishing a voice test,
+// wiped on the very next page that happens to call this). Only an actual
+// change between two *recorded* values counts as a real account switch.
 export function syncAccountScope(userId) {
   try {
     const current = userId || 'guest'
-    if (localStorage.getItem(LAST_ACCOUNT_KEY) !== current) {
+    const last = localStorage.getItem(LAST_ACCOUNT_KEY)
+    if (last !== null && last !== current) {
       clearAccountScopedData()
-      localStorage.setItem(LAST_ACCOUNT_KEY, current)
     }
+    localStorage.setItem(LAST_ACCOUNT_KEY, current)
   } catch {
     // Storage unavailable — nothing to sync.
   }

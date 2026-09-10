@@ -1,6 +1,11 @@
 <template>
   <div class="result-page">
-    <div class="page-inner" v-if="quality">
+    <div class="page-inner loading-state" v-if="isLoading">
+      <div class="result-spinner"></div>
+      <p>Loading your result...</p>
+    </div>
+
+    <div class="page-inner" v-else-if="quality">
       <div class="topbar">
         <button class="btn-back" @click="router.push('/')">
           <span class="back-arrow">&larr;</span> Back To Home
@@ -147,6 +152,7 @@
 import { ref, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
+import { syncAccountScope } from '@/utils/accountScope'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
 import AudioIcon from '@/assets/icons/audio.png'
 import WaterIcon from '@/assets/icons/water.png'
@@ -159,18 +165,36 @@ import CheckMarkIcon from '@/assets/icons/check_mark.png'
 const router = useRouter()
 const result = ref(null)
 const isMember = ref(false)
+const isLoading = ref(true)
 
 onMounted(async () => {
-  const stateResult = window.history.state?.voiceAnalysis
-  const storedResult = sessionStorage.getItem('vocasense:lastVoiceAnalysis')
   try {
-    result.value = stateResult || (storedResult ? JSON.parse(storedResult) : null)
-  } catch {
-    result.value = stateResult || null
-  }
+    // Keep whatever this navigation carried (freshest, and always this
+    // account's own recording) before touching anything account-scoped.
+    const stateResult = window.history.state?.voiceAnalysis
 
-  const { data } = await supabase.auth.getSession()
-  isMember.value = !!data.session?.user
+    const { data } = await supabase.auth.getSession()
+    isMember.value = !!data.session?.user
+
+    // Must run before the sessionStorage fallback read below — if the
+    // signed-in account differs from whoever last left data on this
+    // browser, this wipes the stale cache so it's never mistaken for this
+    // account's result.
+    syncAccountScope(data.session?.user?.id ?? null)
+
+    if (stateResult) {
+      result.value = stateResult
+    } else {
+      const storedResult = sessionStorage.getItem('vocasense:lastVoiceAnalysis')
+      try {
+        result.value = storedResult ? JSON.parse(storedResult) : null
+      } catch {
+        result.value = null
+      }
+    }
+  } finally {
+    isLoading.value = false
+  }
 })
 
 const quality = computed(() => result.value?.quality || null)
@@ -483,6 +507,30 @@ const RecommendationIcon = (props) => {
   gap: 16px;
   padding-top: 80px;
   color: #667085;
+}
+
+.loading-state {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 16px;
+  padding-top: 120px;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.result-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(101, 148, 228, 0.2);
+  border-top-color: #6594e4;
+  animation: resultSpin 0.7s linear infinite;
+}
+
+@keyframes resultSpin {
+  to { transform: rotate(360deg); }
 }
 
 /* ── Top bar ── */
