@@ -784,10 +784,14 @@ function closeForm() {
   router.push({ path: '/improve-result', query: entryQuery() })
 }
 
-// SRS-147: from the completion screen, "See my update result" goes straight
-// to the Result Dashboard rather than back to this page.
+// SRS-162 (UC-17): from the completion screen, "See my updated result"
+// goes through the Analyzing step (UpdatingResultView) rather than
+// straight back to the Result Dashboard — that page is what actually
+// combines the submitted answers with the acoustic analysis and (once
+// wired up) calls the recommendation-generation service before landing on
+// the Result Dashboard.
 function viewResult() {
-  router.push('/result')
+  router.push('/updating-result')
 }
 
 // A member with a recording who skips either form before jumping to the
@@ -2234,8 +2238,13 @@ const InsightIcon = (props) => {
   font-family: 'Poppins', sans-serif;
   position: fixed;
   inset: 0;
-  background: rgba(26, 26, 46, 0.45);
-  backdrop-filter: blur(2px);
+  /* No backdrop-filter here on purpose. blur() on this layer made Chrome
+     ghost/mirror the page behind it whenever the viewport resized while the
+     modal was open (a GPU-compositing repaint bug — isolating the layer via
+     `isolation`/`translateZ` did not stop it, so the only reliable fix is to
+     not blur at all). The darker overlay below makes up for losing the blur
+     — the page behind still reads as dimmed and out of focus. */
+  background: rgba(20, 22, 38, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
