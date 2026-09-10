@@ -10,3 +10,4 @@ noisereduce>=3.0.0
 scikit-learn>=1.4.0
 matplotlib>=3.8.0
 antropy
+google-genai>=1.0.0

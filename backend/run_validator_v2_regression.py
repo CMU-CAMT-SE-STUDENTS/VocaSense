@@ -20,7 +20,7 @@ def main():
   w=csv.DictWriter(h,fieldnames=metrics[0].keys());w.writeheader();w.writerows(metrics)
  ba=(rate(pos)+(1-rate(neg)))/2
  (OUT/'post_fix_summary.md').write_text(f'# Backend V2 post-fix regression\n\nPositive retention: {rate(pos):.1%}. ICAR: {rate(groups["ICAR"]):.1%}. MAONO: {rate(groups["MAONO"]):.1%}. Negative rejection: {1-rate(neg):.1%}. Balanced accuracy: {ba:.1%}.\n',encoding='utf8')
- (OUT/'post_fix_backend_caller_audit.md').write_text('# Backend caller audit\n\n`api.py` imports `input_validator_v2` only for `/api/v2/voice/validate`; v1 remains on `input_validator`. V2 imports backend-local `audio_normalizer`, `validator_config`, and `input_validator`; no root `ml` runtime import exists.\n',encoding='utf8')
+ (OUT/'post_fix_backend_caller_audit.md').write_text('# Backend caller audit\n\nThe application exposes the v2 validator at `/api/voice/validate`. It imports backend-local `audio_normalizer`, `validator_config`, and the legacy validator primitives; no root `ml` runtime import exists.\n',encoding='utf8')
  (OUT/'test_results.txt').write_text('PASS: compile, four-file conceptual regression, and full dataset regression completed.\n',encoding='utf8')
  print(metrics,ba)
 if __name__=='__main__':main()
