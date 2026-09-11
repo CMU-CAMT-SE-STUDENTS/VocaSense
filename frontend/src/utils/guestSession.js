@@ -7,7 +7,14 @@ import { supabase } from './supabase'
 // analysis.guest_session_id actually points at.
 const GUEST_TOKEN_KEY = 'vocasense:guestToken'
 const GUEST_SESSION_ID_KEY = 'vocasense:guestSessionId'
-const GUEST_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+const GUEST_SESSION_EXPIRES_AT_KEY = 'vocasense:guestSessionExpiresAt'
+const GUEST_SESSION_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
+function clearCachedGuestSession() {
+  localStorage.removeItem(GUEST_TOKEN_KEY)
+  localStorage.removeItem(GUEST_SESSION_ID_KEY)
+  localStorage.removeItem(GUEST_SESSION_EXPIRES_AT_KEY)
+}
 
 function randomToken() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID()
@@ -22,7 +29,13 @@ function randomToken() {
 export async function getOrCreateGuestSessionId() {
   try {
     const cachedId = localStorage.getItem(GUEST_SESSION_ID_KEY)
-    if (cachedId) return cachedId
+    const cachedExpiresAt = localStorage.getItem(GUEST_SESSION_EXPIRES_AT_KEY)
+    if (cachedId && cachedExpiresAt && Date.parse(cachedExpiresAt) > Date.now()) return cachedId
+
+    // A session missing an expiry is from the old 30-day implementation.
+    // Start a fresh one rather than risking a foreign-key failure after Cron
+    // has removed the expired server row.
+    clearCachedGuestSession()
 
     let token = localStorage.getItem(GUEST_TOKEN_KEY)
     if (!token) {
@@ -40,12 +53,13 @@ export async function getOrCreateGuestSessionId() {
         started_at: startedAt.toISOString(),
         expires_at: expiresAt.toISOString(),
       })
-      .select('id')
+      .select('id, expires_at')
       .single()
 
     if (error) throw error
 
     localStorage.setItem(GUEST_SESSION_ID_KEY, data.id)
+    localStorage.setItem(GUEST_SESSION_EXPIRES_AT_KEY, data.expires_at)
     return data.id
   } catch (err) {
     console.error('Failed to create guest session', err)
