@@ -41,6 +41,10 @@ class AssessmentRequest(BaseModel):
     questionnaire_version: str = Field(default="1.0", min_length=1, max_length=50)
 
 
+class GuestHistoryClaimRequest(BaseModel):
+    guest_token: str = Field(min_length=1, max_length=200)
+
+
 _recommendation_service: RecommendationService | None = None
 
 
@@ -99,6 +103,20 @@ def create_guest_session():
             "guest_token": session["guest_token"],
             "expires_at": session["expires_at"],
         }
+    except Exception as error:
+        raise_api_error(error)
+
+
+@app.post("/api/guest-sessions/claim-history")
+def claim_guest_history(
+    request: GuestHistoryClaimRequest,
+    authorization: str | None = Header(default=None),
+):
+    """Transfer one valid guest session's analyses to the signed-in member."""
+    try:
+        service = get_recommendation_service()
+        actor = resolve_actor(service, authorization, None)
+        return service.claim_guest_history(actor, request.guest_token)
     except Exception as error:
         raise_api_error(error)
 

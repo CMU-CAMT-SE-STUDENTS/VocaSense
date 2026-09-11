@@ -81,6 +81,7 @@ class RecommendationRepository(Protocol):
     def create_guest_session(self) -> Mapping[str, Any]: ...
     def get_guest_session_by_token(self, guest_token: str) -> Mapping[str, Any] | None: ...
     def insert_analysis(self, payload: Mapping[str, Any]) -> Mapping[str, Any]: ...
+    def claim_guest_analyses(self, guest_session_id: str, user_id: str) -> int: ...
     def get_analysis(self, analysis_id: int) -> Mapping[str, Any] | None: ...
     def get_member_baseline(self, user_id: str) -> Mapping[str, Any] | None: ...
     def upsert_member_baseline(self, user_id: str, answers: Mapping[str, Any], questionnaire_version: str) -> Mapping[str, Any]: ...
@@ -304,6 +305,22 @@ class RecommendationService:
         analysis = self.repository.insert_analysis(payload)
         recommendation = self.generate(int(analysis["id"]), actor)
         return {"analysis": dict(analysis), "recommendation": recommendation}
+
+    def claim_guest_history(self, actor: Actor, guest_token: str) -> dict[str, int]:
+        """Attach this browser's still-valid guest analyses to a member.
+
+        The caller proves ownership twice: with their authenticated member
+        session and with the guest token that created the anonymous records.
+        The repository update changes only still-unclaimed rows, making a
+        repeated request safe.
+        """
+        if not actor.user_id:
+            raise AuthorizationError("Only an authenticated member can claim guest history.")
+        guest_actor = self.actor_from_guest_token(guest_token)
+        claimed = self.repository.claim_guest_analyses(
+            str(guest_actor.guest_session_id), actor.user_id
+        )
+        return {"claimed_analysis_count": claimed}
 
     def generate(
         self,
@@ -540,6 +557,24 @@ class SupabaseRestRepository:
             headers=self._headers(prefer="return=representation"),
         )
         return dict(self._one(rows) or {})
+
+    def claim_guest_analyses(self, guest_session_id: str, user_id: str) -> int:
+        """Move only unclaimed rows for one authenticated guest session.
+
+        This is one conditional PATCH in PostgREST, so concurrent/retried
+        claims cannot move a row already claimed by another request.
+        """
+        rows = self._request(
+            "PATCH", "/rest/v1/analysis",
+            params={
+                "guest_session_id": f"eq.{guest_session_id}",
+                "user_id": "is.null",
+                "select": "id",
+            },
+            json={"user_id": user_id, "guest_session_id": None},
+            headers=self._headers(prefer="return=representation"),
+        )
+        return len(rows) if isinstance(rows, list) else 0
 
     def _get_one(self, table: str, params: Mapping[str, str]) -> Mapping[str, Any] | None:
         rows = self._request(

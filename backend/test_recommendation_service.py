@@ -74,6 +74,15 @@ class FakeRepository:
         self.analyses[row["id"]] = row
         return copy.deepcopy(row)
 
+    def claim_guest_analyses(self, guest_session_id, user_id):
+        claimed = 0
+        for row in self.analyses.values():
+            if row.get("guest_session_id") == guest_session_id and row.get("user_id") is None:
+                row["user_id"] = user_id
+                row["guest_session_id"] = None
+                claimed += 1
+        return claimed
+
     def get_analysis(self, analysis_id):
         return copy.deepcopy(self.analyses.get(analysis_id))
 
@@ -140,6 +149,25 @@ class RecommendationServiceTests(unittest.TestCase):
         result = self.service.generate(2, Actor(guest_session_id="guest-1"))
         self.assertEqual(result["context_type"], "analysis_assessment")
         self.assertEqual(self.repo.baseline_queries, 0)
+
+    def test_member_claims_only_the_matching_guest_history(self):
+        self.repo.analyses[2] = analysis(2, user_id=None, guest_id="guest-1")
+        self.repo.analyses[3] = analysis(3, user_id=None, guest_id="guest-2")
+
+        result = self.service.claim_guest_history(self.member, "token-1")
+
+        self.assertEqual(result, {"claimed_analysis_count": 1})
+        self.assertEqual(self.repo.analyses[2]["user_id"], "user-1")
+        self.assertIsNone(self.repo.analyses[2]["guest_session_id"])
+        self.assertEqual(self.repo.analyses[3]["guest_session_id"], "guest-2")
+        self.assertEqual(
+            self.service.claim_guest_history(self.member, "token-1"),
+            {"claimed_analysis_count": 0},
+        )
+
+    def test_guest_cannot_claim_history(self):
+        with self.assertRaises(AuthorizationError):
+            self.service.claim_guest_history(Actor(guest_session_id="guest-1"), "token-1")
 
     def test_baseline_created_after_analysis_is_excluded(self):
         late = baseline(updated_at="2026-09-11T00:00:00+00:00")

@@ -141,6 +141,32 @@ const errors = reactive({
   password: ''
 })
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const GUEST_SESSION_KEY = 'vocasense:guestAnalysisSession'
+
+async function claimGuestHistory(accessToken) {
+  let guest
+  try {
+    guest = JSON.parse(sessionStorage.getItem(GUEST_SESSION_KEY) || 'null')
+  } catch {
+    return 0
+  }
+  if (!guest?.token) return 0
+
+  const response = await fetch(`${API_BASE_URL}/api/guest-sessions/claim-history`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ guest_token: guest.token })
+  })
+  const result = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(result?.detail || 'Could not transfer guest history.')
+  sessionStorage.removeItem(GUEST_SESSION_KEY)
+  return result?.claimed_analysis_count || 0
+}
+
 const validate = () => {
   let valid = true
   errors.identifier = ''
@@ -195,7 +221,7 @@ const handleSubmit = async () => {
       return false
     }
 
-    return true
+    return data.session
   }
 
   const withTimeout = (promise, ms = 5000) =>
@@ -213,9 +239,17 @@ const handleSubmit = async () => {
       }
       try {
         if (!navigator.onLine) throw new Error('network')
-        const success = await withTimeout(attemptLogin())
-        if (!success) return
-        showToast('Logged in successfully!')
+        const session = await withTimeout(attemptLogin())
+        if (!session) return
+        try {
+          const claimed = await claimGuestHistory(session.access_token)
+          showToast(claimed ? 'Logged in and guest history was saved!' : 'Logged in successfully!')
+        } catch (claimError) {
+          // The login remains valid and the token stays in sessionStorage, so
+          // a later login can safely retry the transfer instead of losing it.
+          console.error('Guest history transfer failed', claimError)
+          showToast('Logged in, but previous guest history could not be transferred. Please log in again shortly.', 'error')
+        }
         setTimeout(() => router.push('/'), 700)
         return
       } catch (err) {
