@@ -56,9 +56,15 @@ import searchIcon from '@/assets/icons/Search.png'
 import chartIcon from '@/assets/icons/Bar Chart.png'
 import { takePendingVoiceAnalysisInput } from '@/utils/voiceAnalysisStore'
 
+import { supabase } from '@/utils/supabase'
+
+import { saveAnalysisResult } from '@/utils/analysisPersistence'
+
+
 const router = useRouter()
 const goBack = () => router.push('/')
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const GUEST_SESSION_KEY = 'vocasense:guestAnalysisSession'
 
 const analysisDone = ref(false)
 const analysisError = ref('')
@@ -71,15 +77,48 @@ const steps = ref([
   { label: 'Generating insights',       icon: chartIcon,  progress: 0, status: 'pending' },
 ])
 
+function savedGuestSession() {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(GUEST_SESSION_KEY) || 'null')
+    return value?.token && Date.parse(value.expiresAt) > Date.now() + 30_000 ? value : null
+  } catch {
+    return null
+  }
+}
+
+async function analysisIdentityHeaders() {
+  const { data } = await supabase.auth.getSession()
+  const accessToken = data.session?.access_token
+  if (accessToken) return { Authorization: `Bearer ${accessToken}` }
+
+  let guest = savedGuestSession()
+  if (!guest) {
+    const response = await fetch(`${API_BASE_URL}/api/guest-sessions`, { method: 'POST' })
+    const value = await response.json().catch(() => null)
+    if (!response.ok || !value?.guest_token || !value?.expires_at) {
+      throw new Error(value?.detail || 'Could not start a guest analysis session.')
+    }
+    guest = { token: value.guest_token, expiresAt: value.expires_at }
+    sessionStorage.setItem(GUEST_SESSION_KEY, JSON.stringify(guest))
+  }
+  return { 'X-Guest-Token': guest.token }
+}
+
 const STEP_DURATIONS = [1000, 1000, 1000, 1000]
 
 function runStep(index) {
-  if (index >= steps.value.length) {
-    router.push('/result')
+  if (index >= steps.value.length) return
+
+  const step = steps.value[index]
+
+  // The last step doesn't complete on a fixed timer like the others — it
+  // waits for the backend's analysis result to actually be ready, so a slow
+  // response can't get masked by a step that finishes before the data does.
+  if (index === steps.value.length - 1) {
+    runFinalStep(step)
     return
   }
 
-  const step = steps.value[index]
   step.status = 'active'
   step.progress = 0
 
@@ -102,6 +141,32 @@ function runStep(index) {
   }
 
   requestAnimationFrame(animate)
+}
+
+function waitForAnalysisResult() {
+  if (analysisResult.value) return Promise.resolve(analysisResult.value)
+  return new Promise((resolve) => {
+    const check = () => {
+      if (analysisResult.value) resolve(analysisResult.value)
+      else setTimeout(check, 100)
+    }
+    check()
+  })
+}
+
+function runFinalStep(step) {
+  // The backend call finishes before this step even starts (it's awaited
+  // earlier, in analyzePendingRecording), so waitForAnalysisResult() alone
+  // would resolve instantly and skip the step's animation entirely. Pairing
+  // it with a minimum visual duration keeps this step's pacing consistent
+  // with the others in the common case, while still genuinely waiting
+  // longer — instead of completing early — if the backend is ever slow.
+  const minDuration = new Promise((resolve) => setTimeout(resolve, 900))
+  const ready = Promise.all([waitForAnalysisResult(), minDuration]).then(([result]) => result)
+
+  runProcessingStep(step, ready).then(() => {
+    setTimeout(() => router.push('/result'), 300)
+  })
 }
 
 const rafMap = new Map()
@@ -199,10 +264,16 @@ async function analyzePendingRecording(input) {
   const formData = new FormData()
   formData.append('file', input.wavBlob, 'voice-sample.wav')
 
+  const headers = await analysisIdentityHeaders()
   const request = fetch(`${API_BASE_URL}/api/voice/analyze`, {
     method: 'POST',
     body: formData,
-  }).then(r => r.json())
+    headers,
+  }).then(async (response) => {
+    const value = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(value?.detail || 'Voice analysis API failed.')
+    return value
+  })
   const featureStep = steps.value.find(s => s.key === 'feature_extraction')
   const result = await runProcessingStep(featureStep,request)
   const apiSteps = result.steps
@@ -227,6 +298,17 @@ async function analyzePendingRecording(input) {
     }, 300)
   }
   console.log('[voice_analysis]', result)
+
+  // Persist this result to Supabase (under the signed-in account, or an
+  // anonymous guest session) so it shows up in History and can be linked to
+  // the "About This Recording" assessment. Best-effort — a save failure
+  // must not block the member from seeing the result they already have.
+  const analysisId = await saveAnalysisResult(result)
+  if (analysisId != null) {
+    sessionStorage.setItem('vocasense:lastAnalysisId', String(analysisId))
+  } else {
+    sessionStorage.removeItem('vocasense:lastAnalysisId')
+  }
 }
 
 function completeStepsFromStoredResult(result) {
@@ -236,6 +318,10 @@ function completeStepsFromStoredResult(result) {
     step.progress = 100
   })
   analysisDone.value = true
+  // SRS-91: revisiting this page with an already-completed result (e.g. via
+  // Back) must still land on the Result Dashboard automatically, same as the
+  // fresh-analysis path's runStep() does once every step finishes.
+  setTimeout(() => router.push('/result'), 300)
 }
 
 onMounted(async () => {
