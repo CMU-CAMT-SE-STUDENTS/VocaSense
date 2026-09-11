@@ -31,7 +31,13 @@
         <div v-if="updateError" class="analysis-result analysis-error">
           <span class="result-status">Couldn't Generate Recommendations</span>
           <span class="result-detail">{{ updateError }}</span>
-          <button class="retry-btn" type="button" @click="retry">Try Again</button>
+          <div class="error-actions">
+            <button class="retry-btn" type="button" @click="retry">Try Again</button>
+            <button class="home-btn" type="button" @click="goHome">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M3 11l9-8 9 8M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Back To Home
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -162,6 +168,8 @@ function retry() {
   run()
 }
 
+const goHome = () => router.push('/')
+
 onMounted(run)
 </script>
 
@@ -276,8 +284,15 @@ onMounted(run)
 .analysis-error { background: #fff3f3; }
 .analysis-error .result-status { color: #c83d3d; }
 
-.retry-btn {
+.error-actions {
+  display: flex;
+  gap: 10px;
   margin-top: 2px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.retry-btn {
   border: none;
   background: linear-gradient(102deg, #95b9f7 8.63%, #6594e4 92.33%);
   color: #fff;
@@ -287,8 +302,35 @@ onMounted(run)
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
-.retry-btn:hover { opacity: 0.9; }
+.retry-btn:hover {
+  opacity: 0.95;
+  box-shadow: 0 8px 20px rgba(101, 148, 228, 0.45);
+  transform: translateY(-1px);
+}
+
+.home-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(101, 148, 228, 0.35);
+  background: #fff;
+  color: #6594e4;
+  border-radius: 14px;
+  padding: 9px 20px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.home-btn svg { width: 15px; height: 15px; }
+.home-btn:hover {
+  background: #f4f7ff;
+  box-shadow: 0 6px 16px rgba(101, 148, 228, 0.22);
+  transform: translateY(-1px);
+}
 
 .step-card {
   background: #6D96DE;
