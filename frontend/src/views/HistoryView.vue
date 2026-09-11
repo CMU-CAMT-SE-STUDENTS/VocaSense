@@ -8,8 +8,15 @@
         <p class="loading-text">Loading your history&hellip;</p>
       </div>
 
-      <div v-else-if="loadError" class="history-loading">
-        <p class="loading-text">Couldn&rsquo;t load your history right now. Please try again shortly.</p>
+      <div v-else-if="loadError" class="history-loading history-error">
+        <p class="history-error-text">Couldn&rsquo;t load your history right now. Please try again shortly.</p>
+        <div class="history-error-actions">
+          <button class="retry-btn" type="button" @click="retryLoadHistory">Try Again</button>
+          <button class="home-btn" type="button" @click="goHome">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M3 11l9-8 9 8M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Back To Home
+          </button>
+        </div>
       </div>
 
       <template v-else-if="records.length">
@@ -317,7 +324,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, h } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Navbar from '@/components/NavBar.vue'
 import { supabase } from '@/utils/supabase'
 import { OVERALL_META, buildMetrics, buildRecommendations, qualityFromAnalysisRow } from '@/utils/voiceInsights'
@@ -330,6 +337,7 @@ import AudioIcon from '@/assets/icons/audio.png'
 import MicrophoneIcon from '@/assets/icons/Microphone.png'
 
 const router = useRouter()
+const route = useRoute()
 const goHome = () => router.push('/')
 
 const displayName = ref('there')
@@ -357,7 +365,6 @@ function mapAnalysisRow(row, baselineAnswers) {
   }
 }
 
-const records = ref([])
 const isLoading = ref(true)
 const loadError = ref('')
 
@@ -391,7 +398,26 @@ async function fetchHistoryRecords(userId) {
   })
 }
 
-onMounted(async () => {
+// Pulled out of onMounted so the "Try Again" button on the error state
+// (loadError) can re-run the exact same load instead of needing a full
+// page reload.
+//
+// `?simulateError=1` in the URL forces the same failure path a real
+// Supabase/network error would take, so the error state and "Try Again" /
+// "Back To Home" buttons (SRS-183) can be tested without actually breaking
+// the connection — same trick used on the Updating Result page.
+async function loadHistory() {
+  loadError.value = ''
+  isLoading.value = true
+  recordsLoading.value = true
+
+  if (route.query.simulateError === '1') {
+    isLoading.value = false
+    recordsLoading.value = false
+    loadError.value = 'Simulated failure (remove ?simulateError=1 from the URL to load normally).'
+    return
+  }
+
   const { data } = await supabase.auth.getSession()
   const user = data.session?.user
   displayName.value = user?.user_metadata?.username || user?.email || 'there'
@@ -401,6 +427,12 @@ onMounted(async () => {
   }
   isLoading.value = false
   if (!user) {
+    recordsLoading.value = false
+    return
+  }
+  if (loadError.value) {
+    // fetchHistoryRecords already failed and set loadError — show the
+    // error state instead of also querying the analysis tables below.
     recordsLoading.value = false
     return
   }
@@ -424,12 +456,23 @@ onMounted(async () => {
       selectedId.value = records.value.reduce((a, b) => (b.date > a.date ? b : a)).id
     }
   } catch (err) {
+    // SRS-183: surface an error message + retry option here instead of
+    // silently falling back to the empty state — a member who does have
+    // history shouldn't be told "no history yet" just because a request
+    // failed (network hiccup, Supabase outage, etc).
     console.error('Failed to load voice analysis history', err)
+    loadError.value = err?.message || 'Failed to load your voice analysis history.'
     records.value = []
   } finally {
     recordsLoading.value = false
   }
-})
+}
+
+onMounted(loadHistory)
+
+const retryLoadHistory = () => {
+  loadHistory()
+}
 
 // ── Icons — same treatment as the Result Dashboard: real image assets
 // where the glyph doesn't need to recolor per state, inline SVG (currentColor)
@@ -1837,6 +1880,68 @@ function formatDate(date) {
 @media (prefers-reduced-motion: reduce) {
   .loading-spinner { animation-duration: 1.6s; }
   .loading-text { animation: none; }
+}
+
+/* ── Error state (SRS-183) — network/database failure retrieving history.
+   Reuses the same card shell as the loading/empty states, but the message
+   doesn't pulse (it isn't "in progress") and it always ships with a way
+   forward: retry the same request, or bail out to the home page. */
+.history-error-text {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #6b7690;
+  margin: 0;
+  text-align: center;
+}
+
+.history-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.retry-btn,
+.home-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 10px 18px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.retry-btn svg,
+.home-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.retry-btn {
+  background: #6594e4;
+  color: #fff;
+  border: none;
+}
+
+.retry-btn:hover {
+  box-shadow: 0 6px 16px rgba(101, 148, 228, 0.35);
+  transform: translateY(-1px);
+}
+
+.home-btn {
+  background: #fff;
+  color: #6594e4;
+  border: 1px solid rgba(101, 148, 228, 0.35);
+}
+
+.home-btn:hover {
+  box-shadow: 0 4px 12px rgba(101, 148, 228, 0.18);
+  transform: translateY(-1px);
 }
 
 .history-empty {
