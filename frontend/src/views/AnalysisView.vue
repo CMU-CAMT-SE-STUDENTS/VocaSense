@@ -104,68 +104,42 @@ async function analysisIdentityHeaders() {
   return { 'X-Guest-Token': guest.token }
 }
 
-const STEP_DURATIONS = [1000, 1000, 1000, 1000]
+const STEP_DURATIONS = [1000, 1000, 1000]
 
-function runStep(index) {
-  if (index >= steps.value.length) return
+function runStep(index, requestPromise) {
+  if (index >= steps.value.length) return Promise.resolve()
 
   const step = steps.value[index]
 
-  // The last step doesn't complete on a fixed timer like the others — it
-  // waits for the backend's analysis result to actually be ready, so a slow
-  // response can't get masked by a step that finishes before the data does.
+  // The request begins with the first visual step. The final step is the
+  // only one that waits on it, so the UI keeps moving while the API works.
   if (index === steps.value.length - 1) {
-    runFinalStep(step)
-    return
+    return runProcessingStep(step, requestPromise)
   }
 
-  step.status = 'active'
-  step.progress = 0
+  return new Promise((resolve) => {
+    step.status = 'active'
+    step.progress = 0
 
-  const duration = STEP_DURATIONS[index]
-  const startedAt = performance.now()
+    const duration = STEP_DURATIONS[index]
+    const startedAt = performance.now()
 
-  const animate = (now) => {
-    const elapsed = now - startedAt
-    const ratio = Math.min(1, elapsed / duration)
-    step.progress = 100 * (1 - (1 - ratio) ** 3)
+    const animate = (now) => {
+      const elapsed = now - startedAt
+      const ratio = Math.min(1, elapsed / duration)
+      step.progress = 100 * (1 - (1 - ratio) ** 3)
 
-    if (ratio >= 1) {
-      step.progress = 100
-      step.status = 'done'
-      setTimeout(() => runStep(index + 1), 300)
-      return
+      if (ratio >= 1) {
+        step.progress = 100
+        step.status = 'done'
+        setTimeout(() => resolve(runStep(index + 1, requestPromise)), 300)
+        return
+      }
+
+      requestAnimationFrame(animate)
     }
 
     requestAnimationFrame(animate)
-  }
-
-  requestAnimationFrame(animate)
-}
-
-function waitForAnalysisResult() {
-  if (analysisResult.value) return Promise.resolve(analysisResult.value)
-  return new Promise((resolve) => {
-    const check = () => {
-      if (analysisResult.value) resolve(analysisResult.value)
-      else setTimeout(check, 100)
-    }
-    check()
-  })
-}
-
-function runFinalStep(step) {
-  // The backend call finishes before this step even starts (it's awaited
-  // earlier, in analyzePendingRecording), so waitForAnalysisResult() alone
-  // would resolve instantly and skip the step's animation entirely. Pairing
-  // it with a minimum visual duration keeps this step's pacing consistent
-  // with the others in the common case, while still genuinely waiting
-  // longer — instead of completing early — if the backend is ever slow.
-  const minDuration = new Promise((resolve) => setTimeout(resolve, 900))
-  const ready = Promise.all([waitForAnalysisResult(), minDuration]).then(([result]) => result)
-
-  runProcessingStep(step, ready).then(() => {
-    setTimeout(() => router.push('/result'), 300)
   })
 }
 
@@ -264,51 +238,39 @@ async function analyzePendingRecording(input) {
   const formData = new FormData()
   formData.append('file', input.wavBlob, 'voice-sample.wav')
 
-  const headers = await analysisIdentityHeaders()
-  const request = fetch(`${API_BASE_URL}/api/voice/analyze`, {
-    method: 'POST',
-    body: formData,
-    headers,
-  }).then(async (response) => {
-    const value = await response.json().catch(() => null)
-    if (!response.ok) throw new Error(value?.detail || 'Voice analysis API failed.')
-    return value
-  })
-  const featureStep = steps.value.find(s => s.key === 'feature_extraction')
-  const result = await runProcessingStep(featureStep,request)
-  const apiSteps = result.steps
-  if (apiSteps) {
-    for (const step of steps.value) {
-      const api = apiSteps[step.key]
+  // Start creating an identity and posting the audio immediately. This
+  // promise is deliberately not awaited here: the first three bars provide
+  // progress feedback while it is in flight.
+  const request = analysisIdentityHeaders()
+    .then((headers) => fetch(`${API_BASE_URL}/api/voice/analyze`, {
+      method: 'POST',
+      body: formData,
+      headers,
+    }))
+    .then(async (response) => {
+      const value = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(value?.detail || 'Voice analysis API failed.')
+      return value
+    })
 
-      if (api?.status === 'done') {
-        step.status = 'done'
-        step.progress = 100
-      }
-    }
-  }
+  const result = await runStep(0, request)
   analysisResult.value = result
   sessionStorage.setItem('vocasense:lastVoiceAnalysis', JSON.stringify(result))
   sessionStorage.setItem('vocasense:lastVoiceAnalysisAt', new Date().toISOString())
   window.history.replaceState({ ...window.history.state, voiceAnalysis: result }, '')
-  const nextStep = steps.value.find(s => s.key === 'analyze_quality')
-  if (nextStep) {
-    setTimeout(() => {
-      runStep(1)
-    }, 300)
-  }
   console.log('[voice_analysis]', result)
 
-  // Persist this result to Supabase (under the signed-in account, or an
-  // anonymous guest session) so it shows up in History and can be linked to
-  // the "About This Recording" assessment. Best-effort — a save failure
-  // must not block the member from seeing the result they already have.
-  const analysisId = await saveAnalysisResult(result)
-  if (analysisId != null) {
-    sessionStorage.setItem('vocasense:lastAnalysisId', String(analysisId))
-  } else {
-    sessionStorage.removeItem('vocasense:lastAnalysisId')
-  }
+  // Persist in the background. A persistence failure must not delay the
+  // completed final bar or prevent the user from seeing their API result.
+  saveAnalysisResult(result).then((analysisId) => {
+    if (analysisId != null) {
+      sessionStorage.setItem('vocasense:lastAnalysisId', String(analysisId))
+    } else {
+      sessionStorage.removeItem('vocasense:lastAnalysisId')
+    }
+  })
+
+  setTimeout(() => router.push('/result'), 300)
 }
 
 function completeStepsFromStoredResult(result) {
