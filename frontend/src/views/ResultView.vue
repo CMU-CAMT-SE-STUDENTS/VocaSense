@@ -1,6 +1,13 @@
 <template>
   <div class="result-page">
-    <div class="page-inner" v-if="quality">
+    <div class="page-inner" v-if="isLoading">
+      <div class="loading-card">
+        <div class="result-spinner"></div>
+        <p class="loading-text">Loading your result&hellip;</p>
+      </div>
+    </div>
+
+    <div class="page-inner" v-else-if="quality">
       <div class="topbar">
         <button class="btn-back" @click="router.push('/')">
           <span class="back-arrow">&larr;</span> Back To Home
@@ -30,7 +37,7 @@
       </div>
 
       <section class="status-card">
-        <div class="status-icon" :class="'risk-bg-' + overallMeta.level">
+        <div class="status-icon" :class="statusIconClass">
           <StatusIcon :level="overallMeta.level" />
         </div>
         <span class="status-badge" :class="'risk-bg-' + overallMeta.level + ' risk-text-' + overallMeta.level">{{ overallMeta.badge }}</span>
@@ -125,7 +132,7 @@
 
           <div class="card progress-card" v-if="!isMember">
             <div class="progress-icon">
-              <img src="@/assets/icons/research.png" alt="" class="glyph-img" />
+              <svg viewBox="0 0 24 24" fill="none"><path d="M3 17l6-6 4 4 8-8M15 7h6v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
             <strong class="progress-title">Track Your Progress</strong>
             <p class="progress-desc">Create a free account to save your test results, view history, and monitor your voice health over time.</p>
@@ -136,9 +143,15 @@
       </section>
     </div>
 
-    <div class="page-inner empty-state" v-else>
-      <p>No recent voice analysis was found.</p>
-      <button class="btn-primary" type="button" @click="router.push('/recording')">Take a Voice Test</button>
+    <div class="page-inner" v-else>
+      <div class="empty-state">
+        <div class="empty-state-icon">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M19 11a7 7 0 0 1-14 0M12 19v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <h2 class="empty-state-title">No recent voice analysis was found</h2>
+        <p class="empty-state-desc">Take a quick voice test and your results will show up here, with personalized recommendations for your vocal health.</p>
+        <button class="btn-primary" type="button" @click="router.push('/recording')">Take a Voice Test</button>
+      </div>
     </div>
   </div>
 </template>
@@ -147,6 +160,7 @@
 import { ref, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
+import { syncAccountScope } from '@/utils/accountScope'
 import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, buildRecommendations } from '@/utils/voiceInsights'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
 import AudioIcon from '@/assets/icons/audio.png'
@@ -155,23 +169,89 @@ import MicrophoneIcon from '@/assets/icons/Microphone.png'
 import SleepingBedIcon from '@/assets/icons/sleeping_bed.png'
 import SparklesIcon from '@/assets/icons/Sparkles_1.png'
 import MuteIcon from '@/assets/icons/mute.png'
+import CheckMarkIcon from '@/assets/icons/check_mark.png'
 
 const router = useRouter()
 const result = ref(null)
 const isMember = ref(false)
+const isLoading = ref(true)
 
 onMounted(async () => {
-  const stateResult = window.history.state?.voiceAnalysis
-  const storedResult = sessionStorage.getItem('vocasense:lastVoiceAnalysis')
   try {
-    result.value = stateResult || (storedResult ? JSON.parse(storedResult) : null)
-  } catch {
-    result.value = stateResult || null
+    // Keep whatever this navigation carried (freshest, and always this
+    // account's own recording) before touching anything account-scoped.
+    const stateResult = window.history.state?.voiceAnalysis
+
+    const { data } = await supabase.auth.getSession()
+    isMember.value = !!data.session?.user
+
+    // Must run before the sessionStorage fallback read below — if the
+    // signed-in account differs from whoever last left data on this
+    // browser, this wipes the stale cache so it's never mistaken for this
+    // account's result.
+    syncAccountScope(data.session?.user?.id ?? null)
+
+    if (stateResult) {
+      result.value = stateResult
+    } else {
+      const storedResult = sessionStorage.getItem('vocasense:lastVoiceAnalysis')
+      try {
+        result.value = storedResult ? JSON.parse(storedResult) : null
+      } catch {
+        result.value = null
+      }
+    }
+  } finally {
+    isLoading.value = false
   }
 
   const { data } = await supabase.auth.getSession()
-  isMember.value = !!data.session?.user
+  const userId = data.session?.user?.id
+  isMember.value = !!userId
+
+  if (userId) await saveToHistory(userId)
 })
+
+// ── Save to History ─────────────────────────────────────────────────
+// The backend only returns categorical conditions (healthy/moderate/warning,
+// clear/slightly_unclear/unclear, ...) — no 0–100 score — but the History
+// page's chart plots a numeric score, so one is derived here from those
+// conditions before saving. Persisted under the signed-in member so the
+// History page (see HistoryView.vue) can fetch it back later.
+const CONDITION_BASE_SCORE = { healthy: 90, moderate: 62, warning: 40 }
+const SUB_CONDITION_PENALTY = {
+  clear: 0, stable: 0, low: 0,
+  slightly_unclear: 1, slightly_unstable: 1, moderate: 1,
+  unclear: 2, unstable: 2, high: 2
+}
+function computeVoiceHealthScore(q) {
+  const base = CONDITION_BASE_SCORE[q.voice_quality.voice_condition] ?? 60
+  const penalty =
+    (SUB_CONDITION_PENALTY[q.clarity.clarity_condition] ?? 0) +
+    (SUB_CONDITION_PENALTY[q.stability.stability_condition] ?? 0) +
+    (SUB_CONDITION_PENALTY[q.hoarseness_risk.hoarseness_condition] ?? 0)
+  return Math.max(0, Math.min(100, base - penalty * 3))
+}
+
+// Guards against saving the same analysis twice (e.g. the member refreshes
+// this page) — one row per request_id per browser session.
+async function saveToHistory(userId) {
+  if (!quality.value) return
+  const requestId = result.value?.request_id
+  const savedKey = 'vocasense:lastSavedRequestId'
+  if (requestId && sessionStorage.getItem(savedKey) === requestId) return
+
+  const { error } = await supabase.from('voice_sessions').insert({
+    user_id: userId,
+    score: computeVoiceHealthScore(quality.value),
+    risk: overallMeta.value.level,
+    result_label: overallMeta.value.badge,
+    metrics: metrics.value,
+    recommendations: recommendations.value
+  })
+
+  if (!error && requestId) sessionStorage.setItem(savedKey, requestId)
+}
 
 const quality = computed(() => result.value?.quality || null)
 
@@ -220,6 +300,14 @@ const METRIC_INFO = {
 }
 
 const overallMeta = computed(() => OVERALL_META[quality.value?.voice_quality?.voice_condition] || OVERALL_META.moderate)
+
+// Same icon-background rule History uses for its "Today's Result" icon
+// (riskIconBgClass in HistoryView.vue): low gets the green gradient chip,
+// moderate/high stay the flat risk-bg-* pastel — so this icon matches that
+// page's instead of inventing its own look.
+const statusIconClass = computed(() =>
+  overallMeta.value.level === 'low' ? 'status-icon-healthy' : 'risk-bg-' + overallMeta.value.level
+)
 
 const metrics = computed(() => {
   if (!quality.value) return []
@@ -302,9 +390,9 @@ const StatusIcon = (props) => {
       h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round' })
     ])
   }
-  return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-    h('path', { d: 'm5 13 4 4L19 7', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
-  ])
+  // Same asset History's RiskIcon uses for low risk, instead of a separately
+  // drawn checkmark path, so the two pages show the literal same glyph.
+  return h('img', { src: CheckMarkIcon, alt: '', class: 'glyph-img' })
 }
 
 // Image glyphs on a gradient square: sparkle for clarity, waveform for
@@ -365,12 +453,97 @@ const RecommendationIcon = (props) => {
   gap: 18px;
 }
 
+/* ── Empty state ── */
 .empty-state {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   text-align: center;
+  gap: 6px;
+  max-width: 460px;
+  margin: 80px auto 0;
+  padding: 48px 32px;
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(101, 148, 228, 0.14);
+  box-shadow: 0 4px 24px rgba(101, 148, 228, 0.1);
+}
+
+.empty-state-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+  background: linear-gradient(135deg, #a5c4f7 0%, #6594e4 100%);
+  color: #fff;
+}
+
+.empty-state-icon svg { width: 28px; height: 28px; }
+
+.empty-state-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 0;
+}
+
+.empty-state-desc {
+  font-size: 13px;
+  font-weight: 500;
+  color: #8b96ad;
+  line-height: 1.6;
+  margin: 0 0 10px;
+}
+
+.empty-state .btn-primary {
+  width: auto;
+  padding: 11px 28px;
+  margin-top: 0;
+}
+
+/* ── Loading state ── */
+.loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 16px;
-  padding-top: 80px;
-  color: #667085;
+  max-width: 460px;
+  margin: 120px auto 0;
+  padding: 64px 32px;
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(101, 148, 228, 0.14);
+  box-shadow: 0 4px 24px rgba(101, 148, 228, 0.1);
+}
+
+.loading-text {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #6b7690;
+  margin: 0;
+  animation: resultLoadingPulse 1.6s ease-in-out infinite;
+}
+
+.result-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 4px solid rgba(101, 148, 228, 0.16);
+  border-top-color: #6594e4;
+  animation: resultSpin 0.8s linear infinite;
+}
+
+@keyframes resultSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes resultLoadingPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
 
 /* ── Top bar ── */
@@ -507,6 +680,11 @@ const RecommendationIcon = (props) => {
   gap: 10px;
 }
 
+/* Same shape/coloring as History's .today-icon (HistoryView.vue) — a plain
+   circle, gradient only for the low/healthy case (.status-icon-healthy,
+   defined below with the exact same gradient values), flat risk-bg-* pastel
+   otherwise — so this reads as the same icon as the History page's, not a
+   separately-invented style. */
 .status-icon {
   width: 56px;
   height: 56px;
@@ -517,6 +695,9 @@ const RecommendationIcon = (props) => {
 }
 
 .status-icon svg, .status-icon .glyph-img { width: 26px; height: 26px; object-fit: contain; }
+
+/* Matches HistoryView.vue's .status-icon-healthy exactly. */
+.status-icon-healthy { background: linear-gradient(135deg, #3fc987, #73d8a5, #a8e8c4); }
 
 .status-badge {
   padding: 5px 14px;
@@ -563,17 +744,26 @@ const RecommendationIcon = (props) => {
   font-weight: 600;
   color: #6594e4;
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .btn-outline svg { width: 16px; height: 16px; }
-.btn-outline:hover { background: #f4f7ff; }
+.btn-outline:hover {
+  background: #f4f7ff;
+  box-shadow: 0 6px 16px rgba(101, 148, 228, 0.22);
+  transform: translateY(-1px);
+}
 
 .btn-outline-primary {
   border: none;
   background: linear-gradient(102deg, #95b9f7 8.63%, #6594e4 92.33%);
   color: #fff;
 }
-.btn-outline-primary:hover { background: linear-gradient(102deg, #95b9f7 8.63%, #6594e4 92.33%); opacity: 0.9; }
+.btn-outline-primary:hover {
+  background: linear-gradient(102deg, #95b9f7 8.63%, #6594e4 92.33%);
+  box-shadow: 0 8px 20px rgba(101, 148, 228, 0.45);
+  transform: translateY(-1px);
+}
 
 /* ── Risk tokens ── */
 .risk-bg-low { background: #e3f7ec; color: #1f9d5b; }
@@ -954,9 +1144,14 @@ const RecommendationIcon = (props) => {
   font-weight: 600;
   cursor: pointer;
   margin-top: 4px;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
-.btn-primary:hover { opacity: 0.9; }
+.btn-primary:hover {
+  opacity: 0.95;
+  box-shadow: 0 8px 20px rgba(101, 148, 228, 0.45);
+  transform: translateY(-1px);
+}
 
 .link-plain {
   border: none;
@@ -997,5 +1192,7 @@ const RecommendationIcon = (props) => {
   .btn-ghost { flex: 1; justify-content: center; }
   .status-card { padding: 24px 16px; }
   .status-subtitle { white-space: normal; }
+  .empty-state { margin-top: 40px; padding: 36px 20px; }
+  .loading-card { margin-top: 60px; padding: 48px 20px; }
 }
 </style>

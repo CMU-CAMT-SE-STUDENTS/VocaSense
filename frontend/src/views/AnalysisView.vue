@@ -55,11 +55,16 @@ import brainIcon from '@/assets/icons/Brain.png'
 import searchIcon from '@/assets/icons/Search.png'
 import chartIcon from '@/assets/icons/Bar Chart.png'
 import { takePendingVoiceAnalysisInput } from '@/utils/voiceAnalysisStore'
+
+import { supabase } from '@/utils/supabase'
+
 import { saveAnalysisResult } from '@/utils/analysisPersistence'
+
 
 const router = useRouter()
 const goBack = () => router.push('/')
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const GUEST_SESSION_KEY = 'vocasense:guestAnalysisSession'
 
 const analysisDone = ref(false)
 const analysisError = ref('')
@@ -71,6 +76,33 @@ const steps = ref([
   { label: 'Choosing recommendations',    icon: searchIcon, progress: 0, status: 'pending' },
   { label: 'Generating insights',       icon: chartIcon,  progress: 0, status: 'pending' },
 ])
+
+function savedGuestSession() {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(GUEST_SESSION_KEY) || 'null')
+    return value?.token && Date.parse(value.expiresAt) > Date.now() + 30_000 ? value : null
+  } catch {
+    return null
+  }
+}
+
+async function analysisIdentityHeaders() {
+  const { data } = await supabase.auth.getSession()
+  const accessToken = data.session?.access_token
+  if (accessToken) return { Authorization: `Bearer ${accessToken}` }
+
+  let guest = savedGuestSession()
+  if (!guest) {
+    const response = await fetch(`${API_BASE_URL}/api/guest-sessions`, { method: 'POST' })
+    const value = await response.json().catch(() => null)
+    if (!response.ok || !value?.guest_token || !value?.expires_at) {
+      throw new Error(value?.detail || 'Could not start a guest analysis session.')
+    }
+    guest = { token: value.guest_token, expiresAt: value.expires_at }
+    sessionStorage.setItem(GUEST_SESSION_KEY, JSON.stringify(guest))
+  }
+  return { 'X-Guest-Token': guest.token }
+}
 
 const STEP_DURATIONS = [1000, 1000, 1000, 1000]
 
@@ -232,10 +264,16 @@ async function analyzePendingRecording(input) {
   const formData = new FormData()
   formData.append('file', input.wavBlob, 'voice-sample.wav')
 
+  const headers = await analysisIdentityHeaders()
   const request = fetch(`${API_BASE_URL}/api/voice/analyze`, {
     method: 'POST',
     body: formData,
-  }).then(r => r.json())
+    headers,
+  }).then(async (response) => {
+    const value = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(value?.detail || 'Voice analysis API failed.')
+    return value
+  })
   const featureStep = steps.value.find(s => s.key === 'feature_extraction')
   const result = await runProcessingStep(featureStep,request)
   const apiSteps = result.steps

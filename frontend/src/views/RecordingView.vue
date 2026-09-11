@@ -436,7 +436,7 @@ const REASON_MAP = {
 }
 
 const validationReasons = computed(() => {
-  const reasons = lastVoiceValidation.value?.ah_validation?.reasons
+  const reasons = (lastVoiceValidation.value?.reasons ?? lastVoiceValidation.value?.ah_validation?.reasons)
     ?.filter(r => !r.toLowerCase().startsWith('snr'))
     ?.map(r => REASON_MAP[r] ?? r)
   return reasons?.length ? reasons : ['Voice unclear — say "Ahhhh" louder and hold for 3 seconds.']

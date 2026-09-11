@@ -2,10 +2,16 @@
   <div class="history-page">
     <Navbar @scroll-to="goHome" />
 
-    <div class="history-container" :class="{ 'history-container-empty': !recordsLoading && !records.length }">
-      <template v-if="recordsLoading">
-        <div class="history-loading">Loading your history&hellip;</div>
-      </template>
+    <div class="history-container" :class="{ 'history-container-empty': isLoading || loadError || !records.length }">
+      <div v-if="isLoading" class="history-loading">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <p class="loading-text">Loading your history&hellip;</p>
+      </div>
+
+      <div v-else-if="loadError" class="history-loading">
+        <p class="loading-text">Couldn&rsquo;t load your history right now. Please try again shortly.</p>
+      </div>
+
       <template v-else-if="records.length">
       <header class="welcome-header">
         <h1 class="welcome-title">Welcome back, {{ displayName }}!</h1>
@@ -278,6 +284,7 @@
           </Transition>
         </div>
       </section>
+
       </template>
 
       <div v-else-if="!recordsLoading" class="history-empty">
@@ -350,11 +357,49 @@ function mapAnalysisRow(row, baselineAnswers) {
   }
 }
 
+const records = ref([])
+const isLoading = ref(true)
+const loadError = ref('')
+
+// Reads this member's saved sessions from Supabase (written by ResultView
+// after each analysis) and shapes them the way the rest of this page
+// expects — same fields the old mockRecords array used.
+async function fetchHistoryRecords(userId) {
+  const { data, error } = await supabase
+    .from('voice_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    loadError.value = error.message
+    return []
+  }
+
+  return (data || []).map((row) => {
+    const date = new Date(row.created_at)
+    return {
+      id: row.id,
+      date,
+      time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      risk: row.risk,
+      score: row.score,
+      resultLabel: row.result_label,
+      metrics: row.metrics || [],
+      recommendations: row.recommendations || []
+    }
+  })
+}
+
 onMounted(async () => {
   const { data } = await supabase.auth.getSession()
   const user = data.session?.user
   displayName.value = user?.user_metadata?.username || user?.email || 'there'
 
+  if (user) {
+    records.value = await fetchHistoryRecords(user.id)
+  }
+  isLoading.value = false
   if (!user) {
     recordsLoading.value = false
     return
@@ -420,7 +465,9 @@ const RecommendationIcon = (props) => {
   return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
 }
 
-
+// ── Latest record — drives the welcome header / "Today's Result" card.
+// Reactive (unlike the old mockRecords-era constant) since `records` now
+// loads asynchronously from Supabase after mount.
 const latestRecord = computed(() =>
   records.value.length
     ? records.value.reduce((a, b) => (b.date > a.date ? b : a))
@@ -442,7 +489,7 @@ function withinRange(record, range, referenceDate) {
 
 const scoreFiltered = computed(() =>
   records.value
-    .filter((r) => withinRange(r, selectedScoreRange.value, latestRecord.value.date))
+    .filter((r) => withinRange(r, selectedScoreRange.value, latestRecord.value?.date))
     .sort((a, b) => a.date - b.date)
 )
 
@@ -468,8 +515,37 @@ const CHART_PAD_Y = 0
 // real session while the risk-color bands still span the full width, which
 // reads as a broken/incomplete chart; spanning actual data keeps the line
 // and area filling the chart edge-to-edge no matter which range is picked.
+// Multiple recordings on the same calendar day used to each plot as their
+// own point — e.g. two sessions both on "10 Sept" produced two dots and two
+// overlapping "10 Sept" x-axis labels. The line/axis now always show exactly
+// one point per calendar day, averaging that day's scores together;
+// `scoreFiltered` (and the stat tiles above) still count every individual
+// session, so "Total sessions" etc. stay accurate.
+function groupIntoDailyPoints(items) {
+  const dayMap = new Map()
+  for (const rec of items) {
+    const key = rec.date.toDateString()
+    if (!dayMap.has(key)) dayMap.set(key, [])
+    dayMap.get(key).push(rec)
+  }
+  return [...dayMap.values()]
+    .map((group) => {
+      const day = new Date(group[0].date)
+      day.setHours(0, 0, 0, 0)
+      const avgScore = Math.round(group.reduce((sum, r) => sum + r.score, 0) / group.length)
+      return {
+        date: day,
+        score: avgScore,
+        time: group.length > 1 ? `${group.length} sessions` : group[0].time
+      }
+    })
+    .sort((a, b) => a.date - b.date)
+}
+
+const dailyPoints = computed(() => groupIntoDailyPoints(scoreFiltered.value))
+
 function chartDomain() {
-  const items = scoreFiltered.value
+  const items = dailyPoints.value
   if (items.length < 2) return null
   return [items[0].date, items[items.length - 1].date]
 }
@@ -478,13 +554,24 @@ function chartDomain() {
 // under their matching x-axis tick — see chartDomain/xAxisTicks below, which
 // share this same domain.
 function chartPoints() {
-  const items = scoreFiltered.value
+  const items = dailyPoints.value
+  const usableW = CHART_W - CHART_PAD * 2
+  const usableH = CHART_H - CHART_PAD_Y * 2
+  // A single session has no real span to plot against (chartDomain needs two
+  // dates to define a range), so without this the whole chart used to render
+  // with zero points — no dot at all — even though the stat boxes above it
+  // (which read scoreFiltered directly, not chartPoints) correctly counted
+  // it. Center the lone point instead of dropping it.
+  if (items.length === 1) {
+    const rec = items[0]
+    const x = CHART_PAD + usableW / 2
+    const y = CHART_PAD_Y + usableH * (1 - rec.score / 100)
+    return [{ x, y, score: rec.score, date: rec.date, time: rec.time }]
+  }
   const domain = chartDomain()
   if (!domain) return null
   const [start, end] = domain
   const span = end - start || 1
-  const usableW = CHART_W - CHART_PAD * 2
-  const usableH = CHART_H - CHART_PAD_Y * 2
   return items.map((rec) => {
     const x = CHART_PAD + usableW * ((rec.date - start) / span)
     const y = CHART_PAD_Y + usableH * (1 - rec.score / 100)
@@ -580,7 +667,12 @@ function formatTick(date) {
 }
 
 const xAxisTicks = computed(() => {
-  const items = scoreFiltered.value
+  const items = dailyPoints.value
+  // Same single-point case as chartPoints above: there's no real domain to
+  // position against, so just center the one tick under the one dot.
+  if (items.length === 1) {
+    return [{ left: 50, label: formatTick(items[0].date) }]
+  }
   const domain = chartDomain()
   if (!domain) return []
   const [start, end] = domain
@@ -629,6 +721,12 @@ const gridLines = computed(() => {
 const dateFilter = ref('All Time')
 const riskFilter = ref('all')
 const selectedId = ref(null)
+// Once records finish loading, default the selection to the latest record
+// (mirrors the old static `ref(latestRecord?.id ?? null)` init, which only
+// worked because mockRecords was available synchronously at setup time).
+watch(records, (list) => {
+  if (selectedId.value == null && list.length) selectedId.value = latestRecord.value?.id ?? null
+})
 
 // UC-15/SRS-131: on tablet & mobile, tapping a record opens its detail as a
 // full-block overlay in place of the list (closed via the Back button) rather
@@ -687,7 +785,7 @@ const vClickOutside = {
 
 const filteredRecords = computed(() =>
   records.value
-    .filter((r) => withinRange(r, dateFilter.value, latestRecord.value.date))
+    .filter((r) => withinRange(r, dateFilter.value, latestRecord.value?.date))
     .filter((r) => riskFilter.value === 'all' || r.risk === riskFilter.value)
     .sort((a, b) => b.date - a.date)
 )
@@ -1684,14 +1782,6 @@ function formatDate(date) {
 .priority-text-high { color: #c83d3d; }
 .priority-text-moderate { color: #c68e3f; }
 
-.history-disclaimer {
-  text-align: center;
-  font-size: 11.5px;
-  font-weight: 500;
-  color: #aaa;
-  margin: 4px 0 0;
-}
-
 /* ── Empty state (UC-12 [2E]: no voice analysis records yet) ── */
 .history-container-empty {
   flex: 1;
@@ -1699,12 +1789,54 @@ function formatDate(date) {
   min-height: calc(100vh - 64px);
 }
 
+/* ── Loading state — real history is being fetched from Supabase. A bare
+   "Loading…" line used to sit alone on the page background; this gives it
+   the same card treatment as the empty state below plus a spinning ring,
+   so the page never looks blank/broken while data is in flight. */
 .history-loading {
-  font-size: 14px;
-  font-weight: 500;
-  color: #8b96ad;
-  text-align: center;
-  padding: 64px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(101, 148, 228, 0.14);
+  box-shadow: 0 4px 24px rgba(101, 148, 228, 0.1);
+  padding: 64px 32px;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 4px solid rgba(101, 148, 228, 0.16);
+  border-top-color: #6594e4;
+  animation: history-spin 0.8s linear infinite;
+}
+
+.loading-text {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #6b7690;
+  margin: 0;
+  animation: history-loading-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes history-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes history-loading-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner { animation-duration: 1.6s; }
+  .loading-text { animation: none; }
 }
 
 .history-empty {
