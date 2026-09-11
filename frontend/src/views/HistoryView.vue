@@ -2,8 +2,17 @@
   <div class="history-page">
     <Navbar @scroll-to="goHome" />
 
-    <div class="history-container" :class="{ 'history-container-empty': !mockRecords.length }">
-      <template v-if="mockRecords.length">
+    <div class="history-container" :class="{ 'history-container-empty': isLoading || loadError || !records.length }">
+      <div v-if="isLoading" class="history-loading">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <p class="loading-text">Loading your history&hellip;</p>
+      </div>
+
+      <div v-else-if="loadError" class="history-loading">
+        <p class="loading-text">Couldn&rsquo;t load your history right now. Please try again shortly.</p>
+      </div>
+
+      <template v-else-if="records.length">
       <header class="welcome-header">
         <h1 class="welcome-title">Welcome back, {{ displayName }}!</h1>
         <p class="welcome-date">{{ formatDate(latestRecord.date) }}</p>
@@ -276,9 +285,6 @@
         </div>
       </section>
 
-      <p class="history-disclaimer">
-        Sample data shown for preview &mdash; connect your account history to see real results here.
-      </p>
       </template>
 
       <div v-else class="history-empty">
@@ -327,10 +333,49 @@ const goHome = () => router.push('/')
 
 const displayName = ref('there')
 
+const records = ref([])
+const isLoading = ref(true)
+const loadError = ref('')
+
+// Reads this member's saved sessions from Supabase (written by ResultView
+// after each analysis) and shapes them the way the rest of this page
+// expects — same fields the old mockRecords array used.
+async function fetchHistoryRecords(userId) {
+  const { data, error } = await supabase
+    .from('voice_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    loadError.value = error.message
+    return []
+  }
+
+  return (data || []).map((row) => {
+    const date = new Date(row.created_at)
+    return {
+      id: row.id,
+      date,
+      time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      risk: row.risk,
+      score: row.score,
+      resultLabel: row.result_label,
+      metrics: row.metrics || [],
+      recommendations: row.recommendations || []
+    }
+  })
+}
+
 onMounted(async () => {
   const { data } = await supabase.auth.getSession()
   const user = data.session?.user
   displayName.value = user?.user_metadata?.username || user?.email || 'there'
+
+  if (user) {
+    records.value = await fetchHistoryRecords(user.id)
+  }
+  isLoading.value = false
 })
 
 // ── Icons — same treatment as the Result Dashboard: real image assets
@@ -367,153 +412,14 @@ const RecommendationIcon = (props) => {
   return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
 }
 
-// ── Sample data (UI preview only — not wired to a backend yet) ─────
-const mockRecords = [
-  {
-    id: 1,
-    date: new Date(2026, 6, 21),
-    time: '09:14 AM',
-    risk: 'low',
-    score: 92,
-    resultLabel: 'No Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Clear', level: 'low' },
-      { kind: 'stability', label: 'Voice stability', value: 'Stable', level: 'low' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Low', level: 'low' }
-    ],
-    recommendations: [
-      { kind: 'rest', text: 'Give your voice a rest for 2-3 hours', priority: 'high' },
-      { kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'high' },
-      { kind: 'voice', text: 'Avoid shouting or speaking loudly', priority: 'moderate' },
-      { kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 2,
-    date: new Date(2026, 6, 19),
-    time: '10:14 AM',
-    risk: 'moderate',
-    score: 64,
-    resultLabel: 'Mild Vocal Fatigue Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Fair', level: 'moderate' },
-      { kind: 'stability', label: 'Voice stability', value: 'Slightly Uneven', level: 'moderate' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Mild', level: 'moderate' }
-    ],
-    recommendations: [
-      { kind: 'rest', text: 'Rest your voice for at least 4 hours', priority: 'high' },
-      { kind: 'water', text: 'Increase water intake throughout the day', priority: 'high' },
-      { kind: 'voice', text: 'Avoid whispering, which can strain your voice', priority: 'moderate' },
-      { kind: 'warmup', text: 'Do gentle humming exercises before speaking', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 5,
-    date: new Date(2026, 6, 17),
-    time: '08:30 AM',
-    risk: 'moderate',
-    score: 58,
-    resultLabel: 'Mild Vocal Fatigue Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Fair', level: 'moderate' },
-      { kind: 'stability', label: 'Voice stability', value: 'Slightly Uneven', level: 'moderate' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Mild', level: 'moderate' }
-    ],
-    recommendations: [
-      { kind: 'rest', text: 'Rest your voice for at least 3 hours', priority: 'high' },
-      { kind: 'water', text: 'Increase water intake throughout the day', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 6,
-    date: new Date(2026, 6, 14),
-    time: '07:50 AM',
-    risk: 'low',
-    score: 90,
-    resultLabel: 'No Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Clear', level: 'low' },
-      { kind: 'stability', label: 'Voice stability', value: 'Stable', level: 'low' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Low', level: 'low' }
-    ],
-    recommendations: [
-      { kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 7,
-    date: new Date(2026, 6, 10),
-    time: '09:00 AM',
-    risk: 'low',
-    score: 85,
-    resultLabel: 'No Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Clear', level: 'low' },
-      { kind: 'stability', label: 'Voice stability', value: 'Stable', level: 'low' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Low', level: 'low' }
-    ],
-    recommendations: [
-      { kind: 'water', text: 'Keep water nearby during long calls', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 8,
-    date: new Date(2026, 6, 4),
-    time: '10:05 AM',
-    risk: 'high',
-    score: 42,
-    resultLabel: 'Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Rough', level: 'high' },
-      { kind: 'stability', label: 'Voice stability', value: 'Unstable', level: 'high' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'High', level: 'high' }
-    ],
-    recommendations: [
-      { kind: 'rest', text: 'Rest your voice completely for the rest of the day', priority: 'high' },
-      { kind: 'voice', text: 'Avoid speaking loudly or for long periods', priority: 'high' }
-    ]
-  },
-  {
-    id: 3,
-    date: new Date(2026, 5, 28),
-    time: '09:14 AM',
-    risk: 'low',
-    score: 88,
-    resultLabel: 'No Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Clear', level: 'low' },
-      { kind: 'stability', label: 'Voice stability', value: 'Stable', level: 'low' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'Low', level: 'low' }
-    ],
-    recommendations: [
-      { kind: 'water', text: 'Keep water nearby during long calls', priority: 'moderate' },
-      { kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' }
-    ]
-  },
-  {
-    id: 4,
-    date: new Date(2026, 5, 20),
-    time: '10:14 AM',
-    risk: 'high',
-    score: 38,
-    resultLabel: 'Vocal Strain Detected',
-    metrics: [
-      { kind: 'clarity', label: 'Voice clarity', value: 'Rough', level: 'high' },
-      { kind: 'stability', label: 'Voice stability', value: 'Unstable', level: 'high' },
-      { kind: 'hoarseness', label: 'Voice hoarseness', value: 'High', level: 'high' }
-    ],
-    recommendations: [
-      { kind: 'rest', text: 'Rest your voice completely for the rest of the day', priority: 'high' },
-      { kind: 'water', text: 'Drink warm water with honey to soothe your throat', priority: 'high' },
-      { kind: 'voice', text: 'Avoid speaking loudly or for long periods', priority: 'high' },
-      { kind: 'warmup', text: 'See a specialist if strain continues past 3 days', priority: 'moderate' }
-    ]
-  }
-]
-
-const latestRecord = mockRecords.length
-  ? mockRecords.reduce((a, b) => (b.date > a.date ? b : a))
-  : null
+// ── Latest record — drives the welcome header / "Today's Result" card.
+// Reactive (unlike the old mockRecords-era constant) since `records` now
+// loads asynchronously from Supabase after mount.
+const latestRecord = computed(() =>
+  records.value.length
+    ? records.value.reduce((a, b) => (b.date > a.date ? b : a))
+    : null
+)
 
 // ── Voice Health Score card ─────────────────────────────────────────
 const scoreRanges = ['7 Days', '30 Days', 'All Time']
@@ -529,8 +435,8 @@ function withinRange(record, range, referenceDate) {
 }
 
 const scoreFiltered = computed(() =>
-  mockRecords
-    .filter((r) => withinRange(r, selectedScoreRange.value, latestRecord.date))
+  records.value
+    .filter((r) => withinRange(r, selectedScoreRange.value, latestRecord.value?.date))
     .sort((a, b) => a.date - b.date)
 )
 
@@ -556,8 +462,37 @@ const CHART_PAD_Y = 0
 // real session while the risk-color bands still span the full width, which
 // reads as a broken/incomplete chart; spanning actual data keeps the line
 // and area filling the chart edge-to-edge no matter which range is picked.
+// Multiple recordings on the same calendar day used to each plot as their
+// own point — e.g. two sessions both on "10 Sept" produced two dots and two
+// overlapping "10 Sept" x-axis labels. The line/axis now always show exactly
+// one point per calendar day, averaging that day's scores together;
+// `scoreFiltered` (and the stat tiles above) still count every individual
+// session, so "Total sessions" etc. stay accurate.
+function groupIntoDailyPoints(items) {
+  const dayMap = new Map()
+  for (const rec of items) {
+    const key = rec.date.toDateString()
+    if (!dayMap.has(key)) dayMap.set(key, [])
+    dayMap.get(key).push(rec)
+  }
+  return [...dayMap.values()]
+    .map((group) => {
+      const day = new Date(group[0].date)
+      day.setHours(0, 0, 0, 0)
+      const avgScore = Math.round(group.reduce((sum, r) => sum + r.score, 0) / group.length)
+      return {
+        date: day,
+        score: avgScore,
+        time: group.length > 1 ? `${group.length} sessions` : group[0].time
+      }
+    })
+    .sort((a, b) => a.date - b.date)
+}
+
+const dailyPoints = computed(() => groupIntoDailyPoints(scoreFiltered.value))
+
 function chartDomain() {
-  const items = scoreFiltered.value
+  const items = dailyPoints.value
   if (items.length < 2) return null
   return [items[0].date, items[items.length - 1].date]
 }
@@ -566,7 +501,7 @@ function chartDomain() {
 // under their matching x-axis tick — see chartDomain/xAxisTicks below, which
 // share this same domain.
 function chartPoints() {
-  const items = scoreFiltered.value
+  const items = dailyPoints.value
   const usableW = CHART_W - CHART_PAD * 2
   const usableH = CHART_H - CHART_PAD_Y * 2
   // A single session has no real span to plot against (chartDomain needs two
@@ -679,8 +614,8 @@ function formatTick(date) {
 }
 
 const xAxisTicks = computed(() => {
-  const items = scoreFiltered.value
-  // Same single-session case as chartPoints above: there's no real domain to
+  const items = dailyPoints.value
+  // Same single-point case as chartPoints above: there's no real domain to
   // position against, so just center the one tick under the one dot.
   if (items.length === 1) {
     return [{ left: 50, label: formatTick(items[0].date) }]
@@ -732,7 +667,13 @@ const gridLines = computed(() => {
 // ── Record List card ────────────────────────────────────────────────
 const dateFilter = ref('All Time')
 const riskFilter = ref('all')
-const selectedId = ref(latestRecord?.id ?? null)
+const selectedId = ref(null)
+// Once records finish loading, default the selection to the latest record
+// (mirrors the old static `ref(latestRecord?.id ?? null)` init, which only
+// worked because mockRecords was available synchronously at setup time).
+watch(records, (list) => {
+  if (selectedId.value == null && list.length) selectedId.value = latestRecord.value?.id ?? null
+})
 
 // UC-15/SRS-131: on tablet & mobile, tapping a record opens its detail as a
 // full-block overlay in place of the list (closed via the Back button) rather
@@ -790,8 +731,8 @@ const vClickOutside = {
 }
 
 const filteredRecords = computed(() =>
-  mockRecords
-    .filter((r) => withinRange(r, dateFilter.value, latestRecord.date))
+  records.value
+    .filter((r) => withinRange(r, dateFilter.value, latestRecord.value?.date))
     .filter((r) => riskFilter.value === 'all' || r.risk === riskFilter.value)
     .sort((a, b) => b.date - a.date)
 )
@@ -1788,19 +1729,61 @@ function formatDate(date) {
 .priority-text-high { color: #c83d3d; }
 .priority-text-moderate { color: #c68e3f; }
 
-.history-disclaimer {
-  text-align: center;
-  font-size: 11.5px;
-  font-weight: 500;
-  color: #aaa;
-  margin: 4px 0 0;
-}
-
 /* ── Empty state (UC-12 [2E]: no voice analysis records yet) ── */
 .history-container-empty {
   flex: 1;
   justify-content: center;
   min-height: calc(100vh - 64px);
+}
+
+/* ── Loading state — real history is being fetched from Supabase. A bare
+   "Loading…" line used to sit alone on the page background; this gives it
+   the same card treatment as the empty state below plus a spinning ring,
+   so the page never looks blank/broken while data is in flight. */
+.history-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(101, 148, 228, 0.14);
+  box-shadow: 0 4px 24px rgba(101, 148, 228, 0.1);
+  padding: 64px 32px;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 4px solid rgba(101, 148, 228, 0.16);
+  border-top-color: #6594e4;
+  animation: history-spin 0.8s linear infinite;
+}
+
+.loading-text {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #6b7690;
+  margin: 0;
+  animation: history-loading-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes history-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes history-loading-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner { animation-duration: 1.6s; }
+  .loading-text { animation: none; }
 }
 
 .history-empty {

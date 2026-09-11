@@ -179,8 +179,52 @@ onMounted(async () => {
   }
 
   const { data } = await supabase.auth.getSession()
-  isMember.value = !!data.session?.user
+  const userId = data.session?.user?.id
+  isMember.value = !!userId
+
+  if (userId) await saveToHistory(userId)
 })
+
+// ── Save to History ─────────────────────────────────────────────────
+// The backend only returns categorical conditions (healthy/moderate/warning,
+// clear/slightly_unclear/unclear, ...) — no 0–100 score — but the History
+// page's chart plots a numeric score, so one is derived here from those
+// conditions before saving. Persisted under the signed-in member so the
+// History page (see HistoryView.vue) can fetch it back later.
+const CONDITION_BASE_SCORE = { healthy: 90, moderate: 62, warning: 40 }
+const SUB_CONDITION_PENALTY = {
+  clear: 0, stable: 0, low: 0,
+  slightly_unclear: 1, slightly_unstable: 1, moderate: 1,
+  unclear: 2, unstable: 2, high: 2
+}
+function computeVoiceHealthScore(q) {
+  const base = CONDITION_BASE_SCORE[q.voice_quality.voice_condition] ?? 60
+  const penalty =
+    (SUB_CONDITION_PENALTY[q.clarity.clarity_condition] ?? 0) +
+    (SUB_CONDITION_PENALTY[q.stability.stability_condition] ?? 0) +
+    (SUB_CONDITION_PENALTY[q.hoarseness_risk.hoarseness_condition] ?? 0)
+  return Math.max(0, Math.min(100, base - penalty * 3))
+}
+
+// Guards against saving the same analysis twice (e.g. the member refreshes
+// this page) — one row per request_id per browser session.
+async function saveToHistory(userId) {
+  if (!quality.value) return
+  const requestId = result.value?.request_id
+  const savedKey = 'vocasense:lastSavedRequestId'
+  if (requestId && sessionStorage.getItem(savedKey) === requestId) return
+
+  const { error } = await supabase.from('voice_sessions').insert({
+    user_id: userId,
+    score: computeVoiceHealthScore(quality.value),
+    risk: overallMeta.value.level,
+    result_label: overallMeta.value.badge,
+    metrics: metrics.value,
+    recommendations: recommendations.value
+  })
+
+  if (!error && requestId) sessionStorage.setItem(savedKey, requestId)
+}
 
 const quality = computed(() => result.value?.quality || null)
 
