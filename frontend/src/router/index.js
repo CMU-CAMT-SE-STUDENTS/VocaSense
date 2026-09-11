@@ -9,6 +9,7 @@ import AnalysisView from '../views/AnalysisView.vue'
 import ImproveResultView from '../views/ImproveResultView.vue'
 import HistoryView from '../views/HistoryView.vue'
 import ResultView from '../views/ResultView.vue'
+import UpdatingResultView from '../views/UpdatingResultView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -62,8 +63,28 @@ const router = createRouter({
       path: '/result',
       name: 'result',
       component: ResultView
+    },
+    {
+      // UC-17 / AD-17 / SRS-162: the "Analyzing" step shown between
+      // submitting a self-assessment (or setting a baseline) and landing
+      // back on the Result Dashboard with updated recommendations.
+      path: '/updating-result',
+      name: 'updating-result',
+      component: UpdatingResultView
     }
   ]
+})
+
+// UC-16 precondition: "About This Recording" answers a specific recording,
+// so it requires one to exist. Scoped to ?form=assessment only — the bare
+// page and ?form=baseline ("Set Your Baseline") stay reachable with no
+// recording at all, since a member can set their baseline any time.
+router.beforeEach((to) => {
+  if (to.path === '/improve-result' && to.query.form === 'assessment') {
+    if (!sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')) {
+      return { path: '/recording', query: { reason: 'needs-recording' } }
+    }
+  }
 })
 
 export default router

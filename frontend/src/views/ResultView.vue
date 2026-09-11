@@ -1,6 +1,11 @@
 <template>
   <div class="result-page">
-    <div class="page-inner" v-if="quality">
+    <div class="page-inner loading-state" v-if="isLoading">
+      <div class="result-spinner"></div>
+      <p>Loading your result...</p>
+    </div>
+
+    <div class="page-inner" v-else-if="quality">
       <div class="topbar">
         <button class="btn-back" @click="router.push('/')">
           <span class="back-arrow">&larr;</span> Back To Home
@@ -17,11 +22,7 @@
         </div>
 
         <div class="topbar-actions">
-          <button class="btn-ghost" type="button" @click="shareResult">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Share
-          </button>
-          <button class="btn-ghost" type="button" @click="exportResult">
+          <button class="btn-ghost" type="button" disabled title="Available in a future update">
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Export
           </button>
@@ -34,7 +35,7 @@
       </div>
 
       <section class="status-card">
-        <div class="status-icon" :class="overallMeta.level === 'low' ? 'status-icon-healthy' : 'risk-bg-' + overallMeta.level">
+        <div class="status-icon" :class="statusIconClass">
           <StatusIcon :level="overallMeta.level" />
         </div>
         <span class="status-badge" :class="'risk-bg-' + overallMeta.level + ' risk-text-' + overallMeta.level">{{ overallMeta.badge }}</span>
@@ -127,7 +128,7 @@
             <svg viewBox="0 0 24 24" fill="none" class="improve-chevron"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
 
-          <div class="card progress-card">
+          <div class="card progress-card" v-if="!isMember">
             <div class="progress-icon">
               <img src="@/assets/icons/research.png" alt="" class="glyph-img" />
             </div>
@@ -144,10 +145,6 @@
       <p>No recent voice analysis was found.</p>
       <button class="btn-primary" type="button" @click="router.push('/recording')">Take a Voice Test</button>
     </div>
-
-    <transition name="toast">
-      <div v-if="toastMessage" class="toast">{{ toastMessage }}</div>
-    </transition>
   </div>
 </template>
 
@@ -155,31 +152,50 @@
 import { ref, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
+import { syncAccountScope } from '@/utils/accountScope'
+import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, buildRecommendations } from '@/utils/voiceInsights'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
 import AudioIcon from '@/assets/icons/audio.png'
 import WaterIcon from '@/assets/icons/water.png'
 import MicrophoneIcon from '@/assets/icons/Microphone.png'
 import SleepingBedIcon from '@/assets/icons/sleeping_bed.png'
-import CheckMarkIcon from '@/assets/icons/check_mark.png'
 import SparklesIcon from '@/assets/icons/Sparkles_1.png'
 import MuteIcon from '@/assets/icons/mute.png'
+import CheckMarkIcon from '@/assets/icons/check_mark.png'
 
 const router = useRouter()
 const result = ref(null)
-const toastMessage = ref('')
 const isMember = ref(false)
+const isLoading = ref(true)
 
 onMounted(async () => {
-  const stateResult = window.history.state?.voiceAnalysis
-  const storedResult = sessionStorage.getItem('vocasense:lastVoiceAnalysis')
   try {
-    result.value = stateResult || (storedResult ? JSON.parse(storedResult) : null)
-  } catch {
-    result.value = stateResult || null
-  }
+    // Keep whatever this navigation carried (freshest, and always this
+    // account's own recording) before touching anything account-scoped.
+    const stateResult = window.history.state?.voiceAnalysis
 
-  const { data } = await supabase.auth.getSession()
-  isMember.value = !!data.session?.user
+    const { data } = await supabase.auth.getSession()
+    isMember.value = !!data.session?.user
+
+    // Must run before the sessionStorage fallback read below — if the
+    // signed-in account differs from whoever last left data on this
+    // browser, this wipes the stale cache so it's never mistaken for this
+    // account's result.
+    syncAccountScope(data.session?.user?.id ?? null)
+
+    if (stateResult) {
+      result.value = stateResult
+    } else {
+      const storedResult = sessionStorage.getItem('vocasense:lastVoiceAnalysis')
+      try {
+        result.value = storedResult ? JSON.parse(storedResult) : null
+      } catch {
+        result.value = null
+      }
+    }
+  } finally {
+    isLoading.value = false
+  }
 })
 
 const quality = computed(() => result.value?.quality || null)
@@ -196,27 +212,9 @@ const improveLabel = computed(() =>
 )
 
 // ── Condition → display copy ────────────────────────────────────────
-const OVERALL_META = {
-  healthy: { level: 'low', badge: 'No Vocal Strain Detected', subtitle: 'Your voice sounds healthy — keep up the good habits!' },
-  moderate: { level: 'moderate', badge: 'Moderate Vocal Strain', subtitle: 'Your voice shows some strain. Try the tips below to help it recover.' },
-  warning: { level: 'high', badge: 'Vocal Strain Detected', subtitle: "Your voice shows signs of strain. Try the tips below, and see a specialist if it doesn't improve." }
-}
-
-const CLARITY_META = {
-  clear: { value: 'Clear', level: 'low' },
-  slightly_unclear: { value: 'Slightly Unclear', level: 'moderate' },
-  unclear: { value: 'Unclear', level: 'high' }
-}
-const STABILITY_META = {
-  stable: { value: 'Stable', level: 'low' },
-  slightly_unstable: { value: 'Slightly Unstable', level: 'moderate' },
-  unstable: { value: 'Unstable', level: 'high' }
-}
-const HOARSENESS_META = {
-  low: { value: 'Low', level: 'low' },
-  moderate: { value: 'Moderate', level: 'moderate' },
-  high: { value: 'High', level: 'high' }
-}
+// OVERALL_META / CLARITY_META / STABILITY_META / HOARSENESS_META live in
+// @/utils/voiceInsights so History (past recordings) renders identical
+// labels/colors for the same conditions instead of a second, driftable copy.
 
 // Legend content for each metric's info popover (opened via the ⓘ button).
 const METRIC_INFO = {
@@ -248,6 +246,14 @@ const METRIC_INFO = {
 
 const overallMeta = computed(() => OVERALL_META[quality.value?.voice_quality?.voice_condition] || OVERALL_META.moderate)
 
+// Same icon-background rule History uses for its "Today's Result" icon
+// (riskIconBgClass in HistoryView.vue): low gets the green gradient chip,
+// moderate/high stay the flat risk-bg-* pastel — so this icon matches that
+// page's instead of inventing its own look.
+const statusIconClass = computed(() =>
+  overallMeta.value.level === 'low' ? 'status-icon-healthy' : 'risk-bg-' + overallMeta.value.level
+)
+
 const metrics = computed(() => {
   if (!quality.value) return []
   const clarity = CLARITY_META[quality.value.clarity.clarity_condition]
@@ -276,102 +282,61 @@ const vClickOutside = {
   }
 }
 
-// Backend returns scores/conditions but no coaching copy, so recommendations
-// are derived client-side from the same conditions shown in the metric cards.
-const recommendations = computed(() => {
-  if (!quality.value) return []
-  const overall = quality.value.voice_quality.voice_condition
-  const hoarse = quality.value.hoarseness_risk.hoarseness_condition
-  const stability = quality.value.stability.stability_condition
-  const clarity = quality.value.clarity.clarity_condition
-  const items = []
-
-  if (overall === 'healthy') {
-    items.push({ kind: 'water', text: 'Keep drinking plenty of water throughout the day', priority: 'moderate' })
-    items.push({ kind: 'warmup', text: 'Continue regular vocal warm-ups to stay in good shape', priority: 'moderate' })
-    return items
+// The per-recording self-assessment ("About This Recording") is stored under
+// the same sessionStorage timestamp key AnalysisView stamps on the result,
+// so this recording's answers (if submitted) can be looked up the same way
+// ImproveResultView.vue reads/writes them.
+function assessmentStorageKey(key) { return `vocasense:assessmentAnswers:${key}` }
+const selfAssessment = computed(() => {
+  const key = sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')
+  if (!key) return null
+  try {
+    const raw = localStorage.getItem(assessmentStorageKey(key))
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
   }
-
-  if (hoarse === 'high' || overall === 'warning') {
-    items.push({ kind: 'rest', text: 'Give your voice a rest for 2-3 hours', priority: 'high' })
-    items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'high' })
-    items.push({ kind: 'sleep', text: 'Get a full night of sleep to help your voice recover', priority: 'high' })
-  } else {
-    items.push({ kind: 'water', text: 'Drink at least 8 glasses of water daily', priority: 'moderate' })
-  }
-
-  if (stability !== 'stable') {
-    items.push({ kind: 'voice', text: 'Avoid shouting or speaking loudly', priority: 'moderate' })
-  }
-
-  if (clarity !== 'clear') {
-    items.push({ kind: 'warmup', text: 'Practice vocal warm-up exercises', priority: 'moderate' })
-  }
-
-  return items.slice(0, 4)
 })
 
-// ── Share / Export ──────────────────────────────────────────────────
-function summaryText() {
-  const lines = [
-    'VocaSense — Voice Analysis Result',
-    formattedDate.value,
-    '',
-    overallMeta.value.badge,
-    ...metrics.value.map((m) => `${m.label}: ${m.value}`),
-    '',
-    'Recommendations:',
-    ...recommendations.value.map((r) => `- ${r.text} (${r.priority === 'high' ? 'High' : 'Moderate'} Priority)`)
-  ]
-  return lines.join('\n')
-}
-
-function showToast(message) {
-  toastMessage.value = message
-  setTimeout(() => { toastMessage.value = '' }, 2200)
-}
-
-async function shareResult() {
-  const text = summaryText()
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: 'VocaSense Voice Analysis', text })
-      return
-    } catch {
-      // user cancelled or share failed — fall through to clipboard
-    }
-  }
+// The member's one-time baseline profile (smoking/alcohol history, daily
+// voice-use hours, home/work environment) — same key ImproveResultView.vue
+// reads/writes. Unlike the per-recording assessment, this isn't tied to any
+// one recording, so it has no session timestamp key.
+const LS_BASELINE_KEY = 'vocasense:baselineAnswers'
+const voiceBaseline = computed(() => {
   try {
-    await navigator.clipboard.writeText(text)
-    showToast('Result copied to clipboard')
+    const raw = localStorage.getItem(LS_BASELINE_KEY)
+    return raw ? JSON.parse(raw) : null
   } catch {
-    showToast('Could not copy result')
+    return null
   }
-}
+})
 
-function exportResult() {
-  const blob = new Blob([summaryText()], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'vocasense-voice-analysis.txt'
-  link.click()
-  URL.revokeObjectURL(url)
-}
+// Backend returns scores/conditions but no coaching copy, so recommendations
+// are derived (in @/utils/voiceInsights, shared with History) from the same
+// conditions shown in the metric cards, plus this recording's self-assessment
+// answers and the member's baseline — those can surface tips the acoustic
+// analysis alone wouldn't catch, e.g. a healthy-sounding recording where the
+// user reported severe symptoms.
+const recommendations = computed(() =>
+  buildRecommendations(quality.value, selfAssessment.value, voiceBaseline.value)
+)
 
 // ── Icons ────────────────────────────────────────────────────────────
 const StatusIcon = (props) => {
   if (props.level === 'high') {
     return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-      h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
-      h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round' })
+      h('path', { d: 'M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
     ])
   }
   if (props.level === 'moderate') {
     return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-      h('path', { d: 'M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+      h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+      h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round' })
     ])
   }
+  // Same asset History's RiskIcon uses for low risk, instead of a separately
+  // drawn checkmark path, so the two pages show the literal same glyph.
   return h('img', { src: CheckMarkIcon, alt: '', class: 'glyph-img' })
 }
 
@@ -393,15 +358,22 @@ const MetricIcon = (props) => {
 // water/voice/warmup/sleep use white-glyph image assets (per-kind, fixed
 // asset regardless of priority) — the priority color-coding still comes
 // through via the square's own background color (see .priority-icon-*),
-// same pattern as the metric cards. "rest" has no matching asset yet, so it
-// stays inline SVG.
+// same pattern as the metric cards. "rest"/"specialist" have no matching
+// asset yet, so they stay inline SVG.
 const RecommendationIcon = (props) => {
   const images = { water: WaterIcon, voice: AudioIcon, warmup: MicrophoneIcon, sleep: SleepingBedIcon }
   if (images[props.kind]) {
     return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
   }
+  if (props.kind === 'specialist') {
+    return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+      h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+      h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' })
+    ])
+  }
   return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
-    h('path', { d: 'M12 7v5l3 3M12 3a9 9 0 1 0 9 9', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+    h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+    h('path', { d: 'M12 7v5l3 3', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
   ])
 }
 </script>
@@ -432,6 +404,30 @@ const RecommendationIcon = (props) => {
   gap: 16px;
   padding-top: 80px;
   color: #667085;
+}
+
+.loading-state {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 16px;
+  padding-top: 120px;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.result-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(101, 148, 228, 0.2);
+  border-top-color: #6594e4;
+  animation: resultSpin 0.7s linear infinite;
+}
+
+@keyframes resultSpin {
+  to { transform: rotate(360deg); }
 }
 
 /* ── Top bar ── */
@@ -466,7 +462,7 @@ const RecommendationIcon = (props) => {
   transition: opacity 0.2s;
 }
 
-.btn-back:hover { opacity: 0.75; }
+.btn-back:hover { background: #f4f7ff; }
 
 .back-arrow { font-size: 16px; }
 
@@ -528,6 +524,15 @@ const RecommendationIcon = (props) => {
 .btn-ghost svg { width: 14px; height: 14px; }
 .btn-ghost:hover { background: #f4f7ff; }
 
+.btn-ghost:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  color: #8a94a8;
+  border-color: rgba(138, 148, 168, 0.25);
+}
+
+.btn-ghost:disabled:hover { background: #fff; }
+
 /* ── Disclaimer ── */
 .disclaimer-banner {
   display: flex;
@@ -559,6 +564,11 @@ const RecommendationIcon = (props) => {
   gap: 10px;
 }
 
+/* Same shape/coloring as History's .today-icon (HistoryView.vue) — a plain
+   circle, gradient only for the low/healthy case (.status-icon-healthy,
+   defined below with the exact same gradient values), flat risk-bg-* pastel
+   otherwise — so this reads as the same icon as the History page's, not a
+   separately-invented style. */
 .status-icon {
   width: 56px;
   height: 56px;
@@ -570,6 +580,7 @@ const RecommendationIcon = (props) => {
 
 .status-icon svg, .status-icon .glyph-img { width: 26px; height: 26px; object-fit: contain; }
 
+/* Matches HistoryView.vue's .status-icon-healthy exactly. */
 .status-icon-healthy { background: linear-gradient(135deg, #3fc987, #73d8a5, #a8e8c4); }
 
 .status-badge {
@@ -702,6 +713,12 @@ const RecommendationIcon = (props) => {
 .info-popover {
   position: absolute;
   top: calc(100% + 8px);
+  /* The info icon sits at the top-right of every card (.metric-card-top is
+     space-between), so anchoring here and opening leftward keeps the
+     popover inside the card in the common cases: every card on mobile
+     (single, near-full-width column) and the middle/last cards in the
+     desktop 3-col grid. Only the first card in that 3-col grid needs the
+     opposite anchor — see the min-width override below. */
   right: 0;
   width: 250px;
   background: #fff;
@@ -712,6 +729,16 @@ const RecommendationIcon = (props) => {
   z-index: 30;
   text-align: left;
   animation: popoverIn 0.16s ease;
+}
+
+/* Only in the 3-col grid (tablet/desktop) does the first card's icon sit
+   close enough to the screen's left edge that opening leftward (the
+   default) would overflow past it — flip that one card to open rightward. */
+@media (min-width: 781px) {
+  .metric-card:first-child .info-popover {
+    left: 0;
+    right: auto;
+  }
 }
 
 @keyframes popoverIn {
@@ -1020,29 +1047,13 @@ const RecommendationIcon = (props) => {
   padding: 2px;
 }
 
-/* ── Toast ── */
-.toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #1a1a2e;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 10px 18px;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-}
-
-.toast-enter-active, .toast-leave-active { transition: opacity 0.2s ease; }
-.toast-enter-from, .toast-leave-to { opacity: 0; }
-
 /* ── Responsive ── */
 @media (max-width: 780px) {
   .bottom-grid { grid-template-columns: 1fr; }
-  .metric-grid { grid-template-columns: 1fr; }
-  .info-popover { left: 0; right: auto; }
+  .metric-grid { grid-template-columns: 1fr; gap: 10px; }
+  .metric-card { padding: 12px; gap: 6px; }
+  .metric-icon-square { width: 40px; height: 40px; border-radius: 12px; }
+  .metric-icon-square svg, .metric-icon-square .glyph-img { width: 22px; height: 22px; }
 }
 
 @media (max-width: 560px) {
