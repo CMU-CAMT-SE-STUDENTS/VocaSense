@@ -1,8 +1,10 @@
 <template>
   <div class="result-page">
-    <div class="page-inner loading-state" v-if="isLoading">
-      <div class="result-spinner"></div>
-      <p>Loading your result...</p>
+    <div class="page-inner" v-if="isLoading">
+      <div class="loading-card">
+        <div class="result-spinner"></div>
+        <p class="loading-text">Loading your result&hellip;</p>
+      </div>
     </div>
 
     <div class="page-inner" v-else-if="quality">
@@ -130,7 +132,7 @@
 
           <div class="card progress-card" v-if="!isMember">
             <div class="progress-icon">
-              <img src="@/assets/icons/research.png" alt="" class="glyph-img" />
+              <svg viewBox="0 0 24 24" fill="none"><path d="M3 17l6-6 4 4 8-8M15 7h6v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
             <strong class="progress-title">Track Your Progress</strong>
             <p class="progress-desc">Create a free account to save your test results, view history, and monitor your voice health over time.</p>
@@ -141,9 +143,15 @@
       </section>
     </div>
 
-    <div class="page-inner empty-state" v-else>
-      <p>No recent voice analysis was found.</p>
-      <button class="btn-primary" type="button" @click="router.push('/recording')">Take a Voice Test</button>
+    <div class="page-inner" v-else>
+      <div class="empty-state">
+        <div class="empty-state-icon">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M19 11a7 7 0 0 1-14 0M12 19v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <h2 class="empty-state-title">No recent voice analysis was found</h2>
+        <p class="empty-state-desc">Take a quick voice test and your results will show up here, with personalized recommendations for your vocal health.</p>
+        <button class="btn-primary" type="button" @click="router.push('/recording')">Take a Voice Test</button>
+      </div>
     </div>
   </div>
 </template>
@@ -445,36 +453,97 @@ const RecommendationIcon = (props) => {
   gap: 18px;
 }
 
+/* ── Empty state ── */
 .empty-state {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 16px;
-  padding-top: 80px;
-  color: #667085;
+  gap: 6px;
+  max-width: 460px;
+  margin: 80px auto 0;
+  padding: 48px 32px;
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(101, 148, 228, 0.14);
+  box-shadow: 0 4px 24px rgba(101, 148, 228, 0.1);
 }
 
-.loading-state {
+.empty-state-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
   align-items: center;
   justify-content: center;
-  text-align: center;
-  gap: 16px;
-  padding-top: 120px;
-  color: #667085;
+  margin-bottom: 6px;
+  background: linear-gradient(135deg, #a5c4f7 0%, #6594e4 100%);
+  color: #fff;
+}
+
+.empty-state-icon svg { width: 28px; height: 28px; }
+
+.empty-state-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 0;
+}
+
+.empty-state-desc {
   font-size: 13px;
   font-weight: 500;
+  color: #8b96ad;
+  line-height: 1.6;
+  margin: 0 0 10px;
+}
+
+.empty-state .btn-primary {
+  width: auto;
+  padding: 11px 28px;
+  margin-top: 0;
+}
+
+/* ── Loading state ── */
+.loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  max-width: 460px;
+  margin: 120px auto 0;
+  padding: 64px 32px;
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(101, 148, 228, 0.14);
+  box-shadow: 0 4px 24px rgba(101, 148, 228, 0.1);
+}
+
+.loading-text {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #6b7690;
+  margin: 0;
+  animation: resultLoadingPulse 1.6s ease-in-out infinite;
 }
 
 .result-spinner {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  border: 3px solid rgba(101, 148, 228, 0.2);
+  border: 4px solid rgba(101, 148, 228, 0.16);
   border-top-color: #6594e4;
-  animation: resultSpin 0.7s linear infinite;
+  animation: resultSpin 0.8s linear infinite;
 }
 
 @keyframes resultSpin {
   to { transform: rotate(360deg); }
+}
+
+@keyframes resultLoadingPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
 
 /* ── Top bar ── */
@@ -675,17 +744,26 @@ const RecommendationIcon = (props) => {
   font-weight: 600;
   color: #6594e4;
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .btn-outline svg { width: 16px; height: 16px; }
-.btn-outline:hover { background: #f4f7ff; }
+.btn-outline:hover {
+  background: #f4f7ff;
+  box-shadow: 0 6px 16px rgba(101, 148, 228, 0.22);
+  transform: translateY(-1px);
+}
 
 .btn-outline-primary {
   border: none;
   background: linear-gradient(102deg, #95b9f7 8.63%, #6594e4 92.33%);
   color: #fff;
 }
-.btn-outline-primary:hover { background: linear-gradient(102deg, #95b9f7 8.63%, #6594e4 92.33%); opacity: 0.9; }
+.btn-outline-primary:hover {
+  background: linear-gradient(102deg, #95b9f7 8.63%, #6594e4 92.33%);
+  box-shadow: 0 8px 20px rgba(101, 148, 228, 0.45);
+  transform: translateY(-1px);
+}
 
 /* ── Risk tokens ── */
 .risk-bg-low { background: #e3f7ec; color: #1f9d5b; }
@@ -1066,9 +1144,14 @@ const RecommendationIcon = (props) => {
   font-weight: 600;
   cursor: pointer;
   margin-top: 4px;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
-.btn-primary:hover { opacity: 0.9; }
+.btn-primary:hover {
+  opacity: 0.95;
+  box-shadow: 0 8px 20px rgba(101, 148, 228, 0.45);
+  transform: translateY(-1px);
+}
 
 .link-plain {
   border: none;
@@ -1109,5 +1192,7 @@ const RecommendationIcon = (props) => {
   .btn-ghost { flex: 1; justify-content: center; }
   .status-card { padding: 24px 16px; }
   .status-subtitle { white-space: normal; }
+  .empty-state { margin-top: 40px; padding: 36px 20px; }
+  .loading-card { margin-top: 60px; padding: 48px 20px; }
 }
 </style>
