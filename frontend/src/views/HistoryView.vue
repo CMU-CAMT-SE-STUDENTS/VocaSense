@@ -2,8 +2,8 @@
   <div class="history-page">
     <Navbar @scroll-to="goHome" />
 
-    <div class="history-container" :class="{ 'history-container-empty': isLoading || loadError || !records.length }">
-      <div v-if="isLoading" class="history-loading">
+    <div class="history-container" :class="{ 'history-container-empty': recordsLoading || loadError || !records.length }">
+      <div v-if="recordsLoading" class="history-loading">
         <span class="loading-spinner" aria-hidden="true"></span>
         <p class="loading-text">Loading your history&hellip;</p>
       </div>
@@ -422,10 +422,6 @@ async function loadHistory() {
   const user = data.session?.user
   displayName.value = user?.user_metadata?.username || user?.email || 'there'
 
-  if (user) {
-    records.value = await fetchHistoryRecords(user.id)
-  }
-  isLoading.value = false
   if (!user) {
     recordsLoading.value = false
     return
