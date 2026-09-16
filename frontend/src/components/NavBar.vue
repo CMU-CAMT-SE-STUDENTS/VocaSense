@@ -1,8 +1,8 @@
 <template>
   <nav class="navbar">
     <div class="nav-content">
-      <!-- logo -->
-      <div class="nav-logo">
+      <!-- logo: go to Home; if already on Home, scroll back to the top -->
+      <div class="nav-logo" role="button" tabindex="0" @click="goToLogoTarget" @keydown.enter="goToLogoTarget">
         <img src="@/assets/icons/logo.png" alt="VocaSense Logo" class="nav-logo-img" />
       </div>
 
@@ -145,13 +145,14 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import { clearAccountScopedData } from '@/utils/accountScope'
 import { hasBaseline, refreshBaselineStatus } from '@/utils/baselineStatus'
 
 const emit = defineEmits(['scroll-to'])
 const router = useRouter()
+const route = useRoute()
 
 const isMenuOpen = ref(false)
 const isProfileMenuOpen = ref(false)
@@ -218,6 +219,19 @@ const goToLogin = () => { closeMenu(); router.push('/login') }
 const goToSignUp = () => { closeMenu(); router.push('/signup') }
 const handleScroll = (id) => { closeMenu(); emit('scroll-to', id) }
 
+// Logo: on Home already, just scroll back to the top (same mechanism as the
+// "Home" nav link); everywhere else (History, or any future page that mounts
+// NavBar), navigate to Home directly via the router — this doesn't rely on
+// the host page's own 'scroll-to' handler doing the right thing with 'top'.
+const goToLogoTarget = () => {
+  closeMenu()
+  if (route.path === '/') {
+    emit('scroll-to', 'top')
+  } else {
+    router.push('/')
+  }
+}
+
 const handleLogout = async () => {
   closeMenu()
   closeProfileMenu()
@@ -281,6 +295,7 @@ const vClickOutside = {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .nav-logo-img {

@@ -2,23 +2,10 @@
   <div class="history-page">
     <Navbar @scroll-to="goHome" />
 
-    <div class="history-container" :class="{ 'history-container-empty': recordsLoading || loadError || !records.length }">
-      <div v-if="recordsLoading" class="history-loading">
-        <span class="loading-spinner" aria-hidden="true"></span>
-        <p class="loading-text">Loading your history&hellip;</p>
-      </div>
-
-      <div v-else-if="loadError" class="history-loading history-error">
-        <p class="history-error-text">Couldn&rsquo;t load your history right now. Please try again shortly.</p>
-        <div class="history-error-actions">
-          <button class="retry-btn" type="button" @click="retryLoadHistory">Try Again</button>
-          <button class="home-btn" type="button" @click="goHome">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M3 11l9-8 9 8M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Back To Home
-          </button>
-        </div>
-      </div>
-
+    <div class="history-container" :class="{ 'history-container-empty': !recordsLoading && !records.length }">
+      <template v-if="recordsLoading">
+        <div class="history-loading">Loading your history&hellip;</div>
+      </template>
       <template v-else-if="records.length">
       <header class="welcome-header">
         <h1 class="welcome-title">Welcome back, {{ displayName }}!</h1>
@@ -291,7 +278,6 @@
           </Transition>
         </div>
       </section>
-
       </template>
 
       <div v-else-if="!recordsLoading" class="history-empty">
@@ -324,7 +310,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, h } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import Navbar from '@/components/NavBar.vue'
 import { supabase } from '@/utils/supabase'
 import { OVERALL_META, buildMetrics, buildRecommendations, qualityFromAnalysisRow } from '@/utils/voiceInsights'
@@ -335,9 +321,9 @@ import MuteIcon from '@/assets/icons/mute.png'
 import WaterIcon from '@/assets/icons/water.png'
 import AudioIcon from '@/assets/icons/audio.png'
 import MicrophoneIcon from '@/assets/icons/Microphone.png'
+import SleepingBedIcon from '@/assets/icons/sleeping_bed.png'
 
 const router = useRouter()
-const route = useRoute()
 const goHome = () => router.push('/')
 
 const displayName = ref('there')
@@ -365,70 +351,12 @@ function mapAnalysisRow(row, baselineAnswers) {
   }
 }
 
-const isLoading = ref(true)
-const loadError = ref('')
-
-// Reads this member's saved sessions from Supabase (written by ResultView
-// after each analysis) and shapes them the way the rest of this page
-// expects — same fields the old mockRecords array used.
-async function fetchHistoryRecords(userId) {
-  const { data, error } = await supabase
-    .from('voice_sessions')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true })
-
-  if (error) {
-    loadError.value = error.message
-    return []
-  }
-
-  return (data || []).map((row) => {
-    const date = new Date(row.created_at)
-    return {
-      id: row.id,
-      date,
-      time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      risk: row.risk,
-      score: row.score,
-      resultLabel: row.result_label,
-      metrics: row.metrics || [],
-      recommendations: row.recommendations || []
-    }
-  })
-}
-
-// Pulled out of onMounted so the "Try Again" button on the error state
-// (loadError) can re-run the exact same load instead of needing a full
-// page reload.
-//
-// `?simulateError=1` in the URL forces the same failure path a real
-// Supabase/network error would take, so the error state and "Try Again" /
-// "Back To Home" buttons (SRS-183) can be tested without actually breaking
-// the connection — same trick used on the Updating Result page.
-async function loadHistory() {
-  loadError.value = ''
-  isLoading.value = true
-  recordsLoading.value = true
-
-  if (route.query.simulateError === '1') {
-    isLoading.value = false
-    recordsLoading.value = false
-    loadError.value = 'Simulated failure (remove ?simulateError=1 from the URL to load normally).'
-    return
-  }
-
+onMounted(async () => {
   const { data } = await supabase.auth.getSession()
   const user = data.session?.user
   displayName.value = user?.user_metadata?.username || user?.email || 'there'
 
   if (!user) {
-    recordsLoading.value = false
-    return
-  }
-  if (loadError.value) {
-    // fetchHistoryRecords already failed and set loadError — show the
-    // error state instead of also querying the analysis tables below.
     recordsLoading.value = false
     return
   }
@@ -452,23 +380,12 @@ async function loadHistory() {
       selectedId.value = records.value.reduce((a, b) => (b.date > a.date ? b : a)).id
     }
   } catch (err) {
-    // SRS-183: surface an error message + retry option here instead of
-    // silently falling back to the empty state — a member who does have
-    // history shouldn't be told "no history yet" just because a request
-    // failed (network hiccup, Supabase outage, etc).
     console.error('Failed to load voice analysis history', err)
-    loadError.value = err?.message || 'Failed to load your voice analysis history.'
     records.value = []
   } finally {
     recordsLoading.value = false
   }
-}
-
-onMounted(loadHistory)
-
-const retryLoadHistory = () => {
-  loadHistory()
-}
+})
 
 // ── Icons — same treatment as the Result Dashboard: real image assets
 // where the glyph doesn't need to recolor per state, inline SVG (currentColor)
@@ -493,20 +410,38 @@ const MetricIcon = (props) => {
   return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
 }
 
+// Kept in sync with ResultView.vue's RecommendationIcon (same `kind` set
+// comes out of buildRecommendations for both pages) — this used to be a
+// separately hand-copied version that had drifted out of sync and was
+// missing 'sleep'/'specialist'/'substance', silently falling through to a
+// broken <img src="undefined"> for those kinds. Keep any new kind added to
+// one file's version mirrored here too.
 const RecommendationIcon = (props) => {
-  if (props.kind === 'rest') {
+  const images = { water: WaterIcon, voice: AudioIcon, warmup: MicrophoneIcon, sleep: SleepingBedIcon }
+  if (images[props.kind]) {
+    return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
+  }
+  if (props.kind === 'specialist') {
     return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
       h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
-      h('path', { d: 'M12 7v5l3 3', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+      h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' })
     ])
   }
-  const images = { water: WaterIcon, voice: AudioIcon, warmup: MicrophoneIcon }
-  return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
+  if (props.kind === 'substance') {
+    return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+      h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+      h('path', { d: 'M6.5 17.5 17.5 6.5', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' })
+    ])
+  }
+  // "rest" (give your voice a break) — the only kind left to fall through to
+  // the plain clock glyph.
+  return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+    h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+    h('path', { d: 'M12 7v5l3 3', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+  ])
 }
 
-// ── Latest record — drives the welcome header / "Today's Result" card.
-// Reactive (unlike the old mockRecords-era constant) since `records` now
-// loads asynchronously from Supabase after mount.
+
 const latestRecord = computed(() =>
   records.value.length
     ? records.value.reduce((a, b) => (b.date > a.date ? b : a))
@@ -528,7 +463,7 @@ function withinRange(record, range, referenceDate) {
 
 const scoreFiltered = computed(() =>
   records.value
-    .filter((r) => withinRange(r, selectedScoreRange.value, latestRecord.value?.date))
+    .filter((r) => withinRange(r, selectedScoreRange.value, latestRecord.value.date))
     .sort((a, b) => a.date - b.date)
 )
 
@@ -554,37 +489,8 @@ const CHART_PAD_Y = 0
 // real session while the risk-color bands still span the full width, which
 // reads as a broken/incomplete chart; spanning actual data keeps the line
 // and area filling the chart edge-to-edge no matter which range is picked.
-// Multiple recordings on the same calendar day used to each plot as their
-// own point — e.g. two sessions both on "10 Sept" produced two dots and two
-// overlapping "10 Sept" x-axis labels. The line/axis now always show exactly
-// one point per calendar day, averaging that day's scores together;
-// `scoreFiltered` (and the stat tiles above) still count every individual
-// session, so "Total sessions" etc. stay accurate.
-function groupIntoDailyPoints(items) {
-  const dayMap = new Map()
-  for (const rec of items) {
-    const key = rec.date.toDateString()
-    if (!dayMap.has(key)) dayMap.set(key, [])
-    dayMap.get(key).push(rec)
-  }
-  return [...dayMap.values()]
-    .map((group) => {
-      const day = new Date(group[0].date)
-      day.setHours(0, 0, 0, 0)
-      const avgScore = Math.round(group.reduce((sum, r) => sum + r.score, 0) / group.length)
-      return {
-        date: day,
-        score: avgScore,
-        time: group.length > 1 ? `${group.length} sessions` : group[0].time
-      }
-    })
-    .sort((a, b) => a.date - b.date)
-}
-
-const dailyPoints = computed(() => groupIntoDailyPoints(scoreFiltered.value))
-
 function chartDomain() {
-  const items = dailyPoints.value
+  const items = scoreFiltered.value
   if (items.length < 2) return null
   return [items[0].date, items[items.length - 1].date]
 }
@@ -593,7 +499,7 @@ function chartDomain() {
 // under their matching x-axis tick — see chartDomain/xAxisTicks below, which
 // share this same domain.
 function chartPoints() {
-  const items = dailyPoints.value
+  const items = scoreFiltered.value
   const usableW = CHART_W - CHART_PAD * 2
   const usableH = CHART_H - CHART_PAD_Y * 2
   // A single session has no real span to plot against (chartDomain needs two
@@ -706,8 +612,8 @@ function formatTick(date) {
 }
 
 const xAxisTicks = computed(() => {
-  const items = dailyPoints.value
-  // Same single-point case as chartPoints above: there's no real domain to
+  const items = scoreFiltered.value
+  // Same single-session case as chartPoints above: there's no real domain to
   // position against, so just center the one tick under the one dot.
   if (items.length === 1) {
     return [{ left: 50, label: formatTick(items[0].date) }]
@@ -760,12 +666,6 @@ const gridLines = computed(() => {
 const dateFilter = ref('All Time')
 const riskFilter = ref('all')
 const selectedId = ref(null)
-// Once records finish loading, default the selection to the latest record
-// (mirrors the old static `ref(latestRecord?.id ?? null)` init, which only
-// worked because mockRecords was available synchronously at setup time).
-watch(records, (list) => {
-  if (selectedId.value == null && list.length) selectedId.value = latestRecord.value?.id ?? null
-})
 
 // UC-15/SRS-131: on tablet & mobile, tapping a record opens its detail as a
 // full-block overlay in place of the list (closed via the Back button) rather
@@ -824,7 +724,7 @@ const vClickOutside = {
 
 const filteredRecords = computed(() =>
   records.value
-    .filter((r) => withinRange(r, dateFilter.value, latestRecord.value?.date))
+    .filter((r) => withinRange(r, dateFilter.value, latestRecord.value.date))
     .filter((r) => riskFilter.value === 'all' || r.risk === riskFilter.value)
     .sort((a, b) => b.date - a.date)
 )
@@ -1821,6 +1721,14 @@ function formatDate(date) {
 .priority-text-high { color: #c83d3d; }
 .priority-text-moderate { color: #c68e3f; }
 
+.history-disclaimer {
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #aaa;
+  margin: 4px 0 0;
+}
+
 /* ── Empty state (UC-12 [2E]: no voice analysis records yet) ── */
 .history-container-empty {
   flex: 1;
@@ -1828,116 +1736,12 @@ function formatDate(date) {
   min-height: calc(100vh - 64px);
 }
 
-/* ── Loading state — real history is being fetched from Supabase. A bare
-   "Loading…" line used to sit alone on the page background; this gives it
-   the same card treatment as the empty state below plus a spinning ring,
-   so the page never looks blank/broken while data is in flight. */
 .history-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  background: #fff;
-  border-radius: 20px;
-  border: 1px solid rgba(101, 148, 228, 0.14);
-  box-shadow: 0 4px 24px rgba(101, 148, 228, 0.1);
-  padding: 64px 32px;
-  max-width: 520px;
-  margin: 0 auto;
-}
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 4px solid rgba(101, 148, 228, 0.16);
-  border-top-color: #6594e4;
-  animation: history-spin 0.8s linear infinite;
-}
-
-.loading-text {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #6b7690;
-  margin: 0;
-  animation: history-loading-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes history-spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes history-loading-pulse {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loading-spinner { animation-duration: 1.6s; }
-  .loading-text { animation: none; }
-}
-
-/* ── Error state (SRS-183) — network/database failure retrieving history.
-   Reuses the same card shell as the loading/empty states, but the message
-   doesn't pulse (it isn't "in progress") and it always ships with a way
-   forward: retry the same request, or bail out to the home page. */
-.history-error-text {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #6b7690;
-  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #8b96ad;
   text-align: center;
-}
-
-.history-error-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.retry-btn,
-.home-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-family: 'Poppins', sans-serif;
-  font-size: 13.5px;
-  font-weight: 600;
-  border-radius: 10px;
-  padding: 10px 18px;
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
-}
-
-.retry-btn svg,
-.home-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.retry-btn {
-  background: #6594e4;
-  color: #fff;
-  border: none;
-}
-
-.retry-btn:hover {
-  box-shadow: 0 6px 16px rgba(101, 148, 228, 0.35);
-  transform: translateY(-1px);
-}
-
-.home-btn {
-  background: #fff;
-  color: #6594e4;
-  border: 1px solid rgba(101, 148, 228, 0.35);
-}
-
-.home-btn:hover {
-  box-shadow: 0 4px 12px rgba(101, 148, 228, 0.18);
-  transform: translateY(-1px);
+  padding: 64px 16px;
 }
 
 .history-empty {
