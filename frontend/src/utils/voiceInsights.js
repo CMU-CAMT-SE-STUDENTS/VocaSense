@@ -94,7 +94,7 @@ export function buildRecommendations(quality, assessment, baseline) {
     }
 
     if (assessment.alcohol === 'yes' || assessment.smoked === 'yes') {
-      items.push({ kind: 'rest', text: 'Avoid alcohol and smoking before recording — they can affect your voice', priority: 'moderate' })
+      items.push({ kind: 'substance', text: 'Avoid alcohol and smoking before recording — they can affect your voice', priority: 'moderate' })
     }
 
     const glassesToday = Number(assessment.glassesToday)
@@ -114,7 +114,7 @@ export function buildRecommendations(quality, assessment, baseline) {
 
   if (baseline) {
     if (baseline.smokingStatus === 'current' || baseline.alcoholStatus === 'yes') {
-      items.push({ kind: 'rest', text: 'Your baseline shows regular smoking or alcohol use — both are long-term risk factors for vocal health', priority: 'moderate' })
+      items.push({ kind: 'substance', text: 'Your baseline shows regular smoking or alcohol use — both are long-term risk factors for vocal health', priority: 'moderate' })
     }
 
     const hoursVoiceHome = Number(baseline.hoursVoiceHome)
