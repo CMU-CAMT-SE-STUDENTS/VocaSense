@@ -631,7 +631,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onUnmounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { supabase } from '@/utils/supabase'
+import { createGuestAssessmentClient, supabase } from '@/utils/supabase'
 import { syncAccountScope } from '@/utils/accountScope'
 import { hasBaseline as sharedHasBaseline } from '@/utils/baselineStatus'
 
@@ -727,7 +727,7 @@ onMounted(async () => {
   }
   if (analysisId.value) {
     remoteLoads.push(
-      supabase.from('recording_assessment').select('answers').eq('analysis_id', analysisId.value).maybeSingle()
+      recordingAssessmentClient().from('recording_assessment').select('answers').eq('analysis_id', analysisId.value).maybeSingle()
         .then(({ data }) => {
           if (data?.answers) {
             Object.assign(answers, data.answers)
@@ -932,6 +932,43 @@ const analysisId = computed(() => {
   const raw = sessionStorage.getItem('vocasense:lastAnalysisId')
   return raw ? Number(raw) : null
 })
+
+function activeGuestToken() {
+  try {
+    const guest = JSON.parse(sessionStorage.getItem('vocasense:guestAnalysisSession') || 'null')
+    return guest?.token && Date.parse(guest.expiresAt) > Date.now() ? guest.token : null
+  } catch {
+    return null
+  }
+}
+
+function recordingAssessmentClient() {
+  if (userId.value) return supabase
+
+  const guestToken = activeGuestToken()
+  if (guestToken) return createGuestAssessmentClient(guestToken)
+  throw new Error('Your guest session has expired. Please record a new voice sample.')
+}
+
+async function regenerateRecommendation(id) {
+  const { data } = await supabase.auth.getSession()
+  const headers = {}
+  if (data.session?.access_token) headers.Authorization = `Bearer ${data.session.access_token}`
+  else {
+    const guestToken = activeGuestToken()
+    if (!guestToken) throw new Error('Your guest session has expired. Please record a new voice sample.')
+    headers['X-Guest-Token'] = guestToken
+  }
+
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  const response = await fetch(
+    `${apiBaseUrl}/api/analyses/${id}/recommendations/generate?regenerate=true`,
+    { method: 'POST', headers }
+  )
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail || 'Could not update recommendations.')
+  return payload
+}
 
 // UC-16 precondition: "About This Recording" only makes sense once a
 // recording exists. Gating the card itself (button routes to /recording
@@ -1168,7 +1205,7 @@ async function submitAssessment() {
     // Tied to the analysis row, not the account — a guest's recording gets
     // this saved too, as long as its analysis was successfully persisted.
     if (analysisId.value) {
-      const { error } = await supabase.from('recording_assessment').upsert(
+      const { error } = await recordingAssessmentClient().from('recording_assessment').upsert(
         {
           analysis_id: analysisId.value,
           answers: toPlain(answers)
@@ -1176,6 +1213,7 @@ async function submitAssessment() {
         { onConflict: 'analysis_id' }
       )
       if (error) throw error
+      await regenerateRecommendation(analysisId.value)
     }
     assessmentDoneForRecording.value = true
     step.value = 'complete'

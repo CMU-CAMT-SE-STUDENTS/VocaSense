@@ -121,6 +121,16 @@ def claim_guest_history(
         raise_api_error(error)
 
 
+@app.get("/api/analyses")
+def get_member_analyses(authorization: str | None = Header(default=None)):
+    try:
+        service = get_recommendation_service()
+        actor = resolve_actor(service, authorization, None)
+        return service.get_member_analyses(actor)
+    except Exception as error:
+        raise_api_error(error)
+
+
 @app.get("/api/analyses/{analysis_id}/recording-assessment")
 def get_recording_assessment(
     analysis_id: int,
@@ -164,14 +174,15 @@ def put_recording_assessment(
 @app.post("/api/analyses/{analysis_id}/recommendations/generate")
 def generate_recommendation(
     analysis_id: int,
+    regenerate: bool = False,
     authorization: str | None = Header(default=None),
     x_guest_token: str | None = Header(default=None, alias="X-Guest-Token"),
 ):
-    """Return the saved row when present; otherwise generate it once."""
+    """Return the saved row, or regenerate it from the latest saved assessment."""
     try:
         service = get_recommendation_service()
         actor = resolve_actor(service, authorization, x_guest_token)
-        return service.generate(analysis_id, actor)
+        return service.generate(analysis_id, actor, regenerate=regenerate)
     except Exception as error:
         raise_api_error(error)
 

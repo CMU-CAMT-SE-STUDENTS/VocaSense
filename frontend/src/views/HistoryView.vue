@@ -327,6 +327,7 @@ import { ref, computed, watch, onMounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Navbar from '@/components/NavBar.vue'
 import { supabase } from '@/utils/supabase'
+import { backendApi } from '@/utils/backendApi'
 import { OVERALL_META, buildMetrics, buildRecommendations, qualityFromAnalysisRow } from '@/utils/voiceInsights'
 import CheckMarkIcon from '@/assets/icons/check_mark.png'
 import SparklesIcon from '@/assets/icons/Sparkles_1.png'
@@ -368,36 +369,6 @@ function mapAnalysisRow(row, baselineAnswers) {
 const isLoading = ref(true)
 const loadError = ref('')
 
-// Reads this member's saved sessions from Supabase (written by ResultView
-// after each analysis) and shapes them the way the rest of this page
-// expects — same fields the old mockRecords array used.
-async function fetchHistoryRecords(userId) {
-  const { data, error } = await supabase
-    .from('voice_sessions')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true })
-
-  if (error) {
-    loadError.value = error.message
-    return []
-  }
-
-  return (data || []).map((row) => {
-    const date = new Date(row.created_at)
-    return {
-      id: row.id,
-      date,
-      time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      risk: row.risk,
-      score: row.score,
-      resultLabel: row.result_label,
-      metrics: row.metrics || [],
-      recommendations: row.recommendations || []
-    }
-  })
-}
-
 // Pulled out of onMounted so the "Try Again" button on the error state
 // (loadError) can re-run the exact same load instead of needing a full
 // page reload.
@@ -434,18 +405,10 @@ async function loadHistory() {
   }
 
   try {
-    const [{ data: analysisRows, error: analysisError }, { data: baselineRow }] = await Promise.all([
-      supabase
-        .from('analysis')
-        .select(
-          'id, created_at, voice_quality_score, voice_condition, hoarseness_score, hoarseness_condition, ' +
-          'stability_score, stability_condition, clarity_score, clarity_condition, recording_assessment(answers)'
-        )
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false }),
-      supabase.from('member_baseline').select('answers').eq('user_id', user.id).maybeSingle()
+    const [analysisRows, { data: baselineRow }] = await Promise.all([
+      backendApi('/api/analyses'),
+      supabase.from('member_baseline').select('answers').eq('user_id', user.id).maybeSingle(),
     ])
-    if (analysisError) throw analysisError
 
     records.value = (analysisRows || []).map((row) => mapAnalysisRow(row, baselineRow?.answers))
     if (records.value.length) {

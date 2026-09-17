@@ -83,6 +83,7 @@ class RecommendationRepository(Protocol):
     def insert_analysis(self, payload: Mapping[str, Any]) -> Mapping[str, Any]: ...
     def claim_guest_analyses(self, guest_session_id: str, user_id: str) -> int: ...
     def get_analysis(self, analysis_id: int) -> Mapping[str, Any] | None: ...
+    def get_member_analyses(self, user_id: str) -> list[Mapping[str, Any]]: ...
     def get_member_baseline(self, user_id: str) -> Mapping[str, Any] | None: ...
     def upsert_member_baseline(self, user_id: str, answers: Mapping[str, Any], questionnaire_version: str) -> Mapping[str, Any]: ...
     def get_recording_assessment(self, analysis_id: int) -> Mapping[str, Any] | None: ...
@@ -437,6 +438,11 @@ class RecommendationService:
             raise AuthorizationError("Guests do not have a member baseline.")
         return self.repository.get_member_baseline(actor.user_id)
 
+    def get_member_analyses(self, actor: Actor) -> list[Mapping[str, Any]]:
+        if not actor.user_id:
+            raise AuthorizationError("Guests do not have member analysis history.")
+        return self.repository.get_member_analyses(actor.user_id)
+
     def get_recording_assessment(self, analysis_id: int, actor: Actor) -> Mapping[str, Any] | None:
         analysis = self.repository.get_analysis(analysis_id)
         if not analysis:
@@ -584,6 +590,24 @@ class SupabaseRestRepository:
 
     def get_analysis(self, analysis_id: int) -> Mapping[str, Any] | None:
         return self._get_one("analysis", {"id": f"eq.{analysis_id}", "select": "*"})
+
+    def get_member_analyses(self, user_id: str) -> list[Mapping[str, Any]]:
+        rows = self._request(
+            "GET",
+            "/rest/v1/analysis",
+            params={
+                "user_id": f"eq.{user_id}",
+                "select": (
+                    "id,created_at,voice_quality_score,voice_condition,hoarseness_score,"
+                    "hoarseness_condition,stability_score,stability_condition,clarity_score,"
+                    "clarity_condition,recording_assessment(answers)"
+                ),
+                "order": "created_at.desc",
+            },
+            headers=self._headers(),
+        )
+        return [dict(row) for row in rows] if isinstance(rows, list) else []
+
 
     def get_member_baseline(self, user_id: str) -> Mapping[str, Any] | None:
         return self._get_one("member_baseline", {"user_id": f"eq.{user_id}", "select": "*"})

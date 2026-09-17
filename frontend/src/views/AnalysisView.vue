@@ -58,8 +58,6 @@ import { takePendingVoiceAnalysisInput } from '@/utils/voiceAnalysisStore'
 
 import { supabase } from '@/utils/supabase'
 
-import { saveAnalysisResult } from '@/utils/analysisPersistence'
-
 
 const router = useRouter()
 const goBack = () => router.push('/')
@@ -260,15 +258,14 @@ async function analyzePendingRecording(input) {
   window.history.replaceState({ ...window.history.state, voiceAnalysis: result }, '')
   console.log('[voice_analysis]', result)
 
-  // Persist in the background. A persistence failure must not delay the
-  // completed final bar or prevent the user from seeing their API result.
-  saveAnalysisResult(result).then((analysisId) => {
-    if (analysisId != null) {
-      sessionStorage.setItem('vocasense:lastAnalysisId', String(analysisId))
-    } else {
-      sessionStorage.removeItem('vocasense:lastAnalysisId')
-    }
-  })
+  // The backend owns all analysis persistence. In particular, guest sessions
+  // must never be inserted with the browser's publishable key: that would
+  // bypass the backend's ownership checks and is correctly rejected by RLS.
+  if (result.analysis_id != null) {
+    sessionStorage.setItem('vocasense:lastAnalysisId', String(result.analysis_id))
+  } else {
+    sessionStorage.removeItem('vocasense:lastAnalysisId')
+  }
 
   setTimeout(() => router.push('/result'), 300)
 }
