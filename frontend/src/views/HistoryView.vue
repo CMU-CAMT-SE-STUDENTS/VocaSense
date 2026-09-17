@@ -335,6 +335,7 @@ import MuteIcon from '@/assets/icons/mute.png'
 import WaterIcon from '@/assets/icons/water.png'
 import AudioIcon from '@/assets/icons/audio.png'
 import MicrophoneIcon from '@/assets/icons/Microphone.png'
+import SleepingBedIcon from '@/assets/icons/sleeping_bed.png'
 
 const router = useRouter()
 const route = useRoute()
@@ -493,15 +494,33 @@ const MetricIcon = (props) => {
   return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
 }
 
+// Kept in sync with ResultView.vue's RecommendationIcon (same `kind` set
+// comes out of buildRecommendations for both pages) — missing 'sleep',
+// 'specialist', 'substance' here silently fell through to a broken
+// <img src="undefined"> for those kinds. Keep any new kind added to one
+// file's version mirrored here too.
 const RecommendationIcon = (props) => {
-  if (props.kind === 'rest') {
+  const images = { water: WaterIcon, voice: AudioIcon, warmup: MicrophoneIcon, sleep: SleepingBedIcon }
+  if (images[props.kind]) {
+    return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
+  }
+  if (props.kind === 'specialist') {
     return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
       h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
-      h('path', { d: 'M12 7v5l3 3', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+      h('path', { d: 'M12 8v5m0 3h.01', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' })
     ])
   }
-  const images = { water: WaterIcon, voice: AudioIcon, warmup: MicrophoneIcon }
-  return h('img', { src: images[props.kind], alt: '', class: 'glyph-img' })
+  if (props.kind === 'substance') {
+    return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+      h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+      h('path', { d: 'M6.5 17.5 17.5 6.5', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' })
+    ])
+  }
+  // "rest" (give your voice a break) — the only kind left to fall through to.
+  return h('svg', { viewBox: '0 0 24 24', fill: 'none' }, [
+    h('circle', { cx: '12', cy: '12', r: '9', stroke: 'currentColor', 'stroke-width': '2' }),
+    h('path', { d: 'M12 7v5l3 3', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+  ])
 }
 
 // ── Latest record — drives the welcome header / "Today's Result" card.
@@ -646,8 +665,9 @@ function scoreBand(score) {
 // Catmull-Rom/Bezier smoothed curve. The smoothed version could overshoot
 // past the real data range between two points with a sharp change in score
 // (most visible on the last segment, where the curve has no following point
-// to pull it back), drawing a dip/spike that never actually happened. A
-// straight line always passes exactly through every plotted score.
+// to pull it back), drawing a dip/spike that never actually happened and
+// making hover points look misaligned with the line under them. A straight
+// line always passes exactly through every plotted score.
 function linePath(pts) {
   if (!pts || pts.length < 2) return ''
   return pts.reduce((d, p, i) => d + `${i === 0 ? 'M' : ' L'}${p.x},${p.y}`, '')
@@ -1276,7 +1296,11 @@ function formatDate(date) {
    (.is-active — persists until an outside click clears it). */
 .chart-tooltip {
   position: absolute;
-  bottom: calc(100% + 6px);
+  /* Extra clearance above the point (was +6px) — with ~30 points packed
+     into the chart width, a ~130px-wide card centered on one point spans
+     several neighboring points horizontally; pushing it further up reduces
+     how often it visually sits on top of a nearby point/dip in the line. */
+  bottom: calc(100% + 22px);
   left: 50%;
   transform: translateX(-50%) translateY(4px);
   display: flex;
