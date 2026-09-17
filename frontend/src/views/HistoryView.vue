@@ -1296,11 +1296,12 @@ function formatDate(date) {
    (.is-active — persists until an outside click clears it). */
 .chart-tooltip {
   position: absolute;
-  /* Extra clearance above the point (was +6px) — with ~30 points packed
-     into the chart width, a ~130px-wide card centered on one point spans
-     several neighboring points horizontally; pushing it further up reduces
-     how often it visually sits on top of a nearby point/dip in the line. */
-  bottom: calc(100% + 22px);
+  /* Extra clearance above the point (was +6px, then +22px) — with ~30
+     points packed into the chart width, a ~130px-wide card centered on one
+     point spans several neighboring points horizontally, so a small gap
+     still let it sit on top of a nearby point/dip. Pushed well clear of
+     the point cluster instead of just barely above the hovered point. */
+  bottom: calc(100% + 40px);
   left: 50%;
   transform: translateX(-50%) translateY(4px);
   display: flex;
