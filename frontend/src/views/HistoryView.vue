@@ -30,7 +30,7 @@
           <RiskIcon :risk="latestRecord.risk" />
         </div>
         <div class="today-info">
-          <span class="today-label">Today's Result</span>
+          <span class="today-label">{{ latestRecordLabel }}</span>
           <span class="today-result" :class="'risk-text-' + latestRecord.risk">{{ latestRecord.resultLabel }}</span>
           <span class="today-meta">{{ formatDate(latestRecord.date) }} &middot; {{ latestRecord.time }}</span>
         </div>
@@ -513,6 +513,17 @@ const latestRecord = computed(() =>
     : null
 )
 
+// SRS-117 still requires the most recent session to drive this card no
+// matter when it happened — this only changes the CARD'S LABEL, not which
+// record is shown, so "Today's Result" doesn't mislabel a session from days
+// ago as if it were recorded today.
+const latestRecordLabel = computed(() => {
+  if (!latestRecord.value) return "Today's Result"
+  const today = new Date()
+  const isToday = latestRecord.value.date.toDateString() === today.toDateString()
+  return isToday ? "Today's Result" : 'Latest Result'
+})
+
 // ── Voice Health Score card ─────────────────────────────────────────
 const scoreRanges = ['7 Days', '30 Days', 'All Time']
 const selectedScoreRange = ref('7 Days')
@@ -528,7 +539,11 @@ function withinRange(record, range, referenceDate) {
 
 const scoreFiltered = computed(() =>
   records.value
-    .filter((r) => withinRange(r, selectedScoreRange.value, latestRecord.value?.date))
+    // Reference point is "today", not the latest record's own date — the
+    // latest record trivially satisfies any range against its own date
+    // (diff always 0), which made "No sessions in this range yet." (URS-13)
+    // unreachable in practice whenever at least one record existed.
+    .filter((r) => withinRange(r, selectedScoreRange.value, new Date()))
     .sort((a, b) => a.date - b.date)
 )
 
@@ -627,32 +642,24 @@ function scoreBand(score) {
   return 'high'
 }
 
-// Catmull-Rom → cubic Bezier, so the trend reads as a curve instead of sharp segments
-function smoothLinePath(pts) {
+// Straight segments between each session's point — deliberately not a
+// Catmull-Rom/Bezier smoothed curve. The smoothed version could overshoot
+// past the real data range between two points with a sharp change in score
+// (most visible on the last segment, where the curve has no following point
+// to pull it back), drawing a dip/spike that never actually happened. A
+// straight line always passes exactly through every plotted score.
+function linePath(pts) {
   if (!pts || pts.length < 2) return ''
-  if (pts.length === 2) return `M${pts[0].x},${pts[0].y} L${pts[1].x},${pts[1].y}`
-  let d = `M${pts[0].x},${pts[0].y}`
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] || pts[i]
-    const p1 = pts[i]
-    const p2 = pts[i + 1]
-    const p3 = pts[i + 2] || p2
-    const cp1x = p1.x + (p2.x - p0.x) / 6
-    const cp1y = p1.y + (p2.y - p0.y) / 6
-    const cp2x = p2.x - (p3.x - p1.x) / 6
-    const cp2y = p2.y - (p3.y - p1.y) / 6
-    d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`
-  }
-  return d
+  return pts.reduce((d, p, i) => d + `${i === 0 ? 'M' : ' L'}${p.x},${p.y}`, '')
 }
 
-const chartLinePath = computed(() => smoothLinePath(chartPoints()))
+const chartLinePath = computed(() => linePath(chartPoints()))
 
 const chartAreaPath = computed(() => {
   const pts = chartPoints()
   if (!pts) return ''
   const baseline = CHART_H - CHART_PAD_Y
-  return `${smoothLinePath(pts)} L${pts[pts.length - 1].x},${baseline} L${pts[0].x},${baseline} Z`
+  return `${linePath(pts)} L${pts[pts.length - 1].x},${baseline} L${pts[0].x},${baseline} Z`
 })
 
 // All points as % positions (not raw SVG coords, since these render as HTML
@@ -824,7 +831,9 @@ const vClickOutside = {
 
 const filteredRecords = computed(() =>
   records.value
-    .filter((r) => withinRange(r, dateFilter.value, latestRecord.value?.date))
+    // Same fix as scoreFiltered above — filter against today, not the
+    // latest record's own date.
+    .filter((r) => withinRange(r, dateFilter.value, new Date()))
     .filter((r) => riskFilter.value === 'all' || r.risk === riskFilter.value)
     .sort((a, b) => b.date - a.date)
 )
