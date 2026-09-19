@@ -63,10 +63,35 @@ const router = useRouter()
 const goBack = () => router.push('/')
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 const GUEST_SESSION_KEY = 'vocasense:guestAnalysisSession'
+const RETRYABLE_STATUS_CODES = new Set([502, 503, 504])
+const BACKEND_RETRY_DELAYS_MS = [3000, 5000, 10000, 15000, 20000]
 
 const analysisDone = ref(false)
 const analysisError = ref('')
 const analysisResult = ref(null)
+
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+
+async function fetchBackend(path, options) {
+  let lastError
+
+  for (let attempt = 0; attempt <= BACKEND_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, options)
+      if (!RETRYABLE_STATUS_CODES.has(response.status) || attempt === BACKEND_RETRY_DELAYS_MS.length) {
+        return response
+      }
+      lastError = new Error(`Backend temporarily unavailable (${response.status})`)
+    } catch (error) {
+      lastError = error
+      if (attempt === BACKEND_RETRY_DELAYS_MS.length) throw error
+    }
+
+    await wait(BACKEND_RETRY_DELAYS_MS[attempt])
+  }
+
+  throw lastError
+}
 
 const steps = ref([
   { key: 'feature_extraction',label: 'Processing audio signal',   icon: micIcon,    progress: 0, status: 'pending' },
@@ -91,7 +116,7 @@ async function analysisIdentityHeaders() {
 
   let guest = savedGuestSession()
   if (!guest) {
-    const response = await fetch(`${API_BASE_URL}/api/guest-sessions`, { method: 'POST' })
+    const response = await fetchBackend('/api/guest-sessions', { method: 'POST' })
     const value = await response.json().catch(() => null)
     if (!response.ok || !value?.guest_token || !value?.expires_at) {
       throw new Error(value?.detail || 'Could not start a guest analysis session.')
@@ -240,7 +265,7 @@ async function analyzePendingRecording(input) {
   // promise is deliberately not awaited here: the first three bars provide
   // progress feedback while it is in flight.
   const request = analysisIdentityHeaders()
-    .then((headers) => fetch(`${API_BASE_URL}/api/voice/analyze`, {
+    .then((headers) => fetchBackend('/api/voice/analyze', {
       method: 'POST',
       body: formData,
       headers,
