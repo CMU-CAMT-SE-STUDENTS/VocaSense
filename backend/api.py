@@ -1,3 +1,4 @@
+import os
 from typing import Any
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
@@ -21,11 +22,19 @@ from recommendation_service import (
 app = FastAPI(title="VocaSense API")
 
 # Define the origins (URLs) allowed to access your API
-origins = [
+DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",  # Web link from Vite
     "http://127.0.0.1:5173",  # Vite via loopback IP
     "http://127.0.0.1:5500",  # Common for VS Code Live Server
 ]
+
+# Hosted frontends must be explicitly allowed.  Render supplies the value as a
+# comma-separated environment variable, while local development keeps these
+# Vite defaults without any extra setup.
+configured_origins = os.getenv("CORS_ORIGINS", "")
+origins = [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
+if not origins:
+    origins = DEFAULT_CORS_ORIGINS
 
 app.add_middleware(
     CORSMiddleware,
