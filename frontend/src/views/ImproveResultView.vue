@@ -369,7 +369,7 @@
                 </div>
 
                 <p v-if="assessmentSaveError" class="save-error-banner">
-                  Something went wrong saving your answers. Check your connection and try again.
+                  Something went wrong saving your answers. Check your connection.
                 </p>
 
                 <div class="nav-row">
@@ -381,7 +381,7 @@
                   </button>
                   <button v-else class="btn-primary sm" type="button" :disabled="!isSectionComplete || isSubmittingAssessment" @click="submitAssessment">
                     <span v-if="isSubmittingAssessment" class="btn-spinner" aria-hidden="true"></span>
-                    {{ isSubmittingAssessment ? 'Saving...' : 'Submit' }}
+                    {{ isSubmittingAssessment ? 'Saving...' : (assessmentSaveError ? 'Try Again' : 'Submit') }}
                   </button>
                 </div>
               </template>
@@ -558,7 +558,7 @@
                 </div>
 
                 <p v-if="baselineSaveError" class="save-error-banner">
-                  Something went wrong saving your baseline. Check your connection and try again.
+                  Something went wrong saving your baseline. Check your connection.
                 </p>
 
                 <div class="nav-row">
@@ -570,7 +570,7 @@
                   </button>
                   <button v-else class="btn-primary sm" type="button" :disabled="!isBaselineSectionComplete || isSavingBaseline" @click="baselineNext">
                     <span v-if="isSavingBaseline" class="btn-spinner" aria-hidden="true"></span>
-                    {{ isSavingBaseline ? 'Saving...' : 'Save' }}
+                    {{ isSavingBaseline ? 'Saving...' : (baselineSaveError ? 'Try Again' : 'Save') }}
                   </button>
                 </div>
               </template>
