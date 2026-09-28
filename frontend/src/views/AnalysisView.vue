@@ -55,6 +55,7 @@ import brainIcon from '@/assets/icons/Brain.png'
 import searchIcon from '@/assets/icons/Search.png'
 import chartIcon from '@/assets/icons/Bar Chart.png'
 import { takePendingVoiceAnalysisInput } from '@/utils/voiceAnalysisStore'
+import { syncAccountScope } from '@/utils/accountScope'
 
 import { supabase } from '@/utils/supabase'
 
@@ -255,6 +256,14 @@ async function analyzePendingRecording(input) {
 
   const result = await runStep(0, request)
   analysisResult.value = result
+
+  // Claim the local cache for whoever produced this result *before* writing
+  // it. Otherwise the first recording after signing up / switching accounts
+  // is written under the previous owner, and ResultView's syncAccountScope()
+  // sees the account change and wipes the result it is about to show.
+  const { data: sessionData } = await supabase.auth.getSession()
+  syncAccountScope(sessionData.session?.user?.id ?? null)
+
   sessionStorage.setItem('vocasense:lastVoiceAnalysis', JSON.stringify(result))
   sessionStorage.setItem('vocasense:lastVoiceAnalysisAt', new Date().toISOString())
   window.history.replaceState({ ...window.history.state, voiceAnalysis: result }, '')
