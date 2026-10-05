@@ -1,9 +1,10 @@
 <template>
-  <!-- Off-screen print layout captured by exportReport(). Fixed 794px width
-       (A4 at 96dpi) so PDF and PNG look the same whatever the viewport is.
-       Content mirrors the Result page / History record detail: status,
-       three metrics, recommendations. -->
   <div class="export-root" aria-hidden="true">
+    <!-- Off-screen print layout captured by exportReport() for PNG. Fixed
+         794px width (A4 at 96dpi) so it looks the same at any viewport. Kept
+         inside the root div: a comment above it makes this a multi-root
+         component and `$el` stops being the element (breaks the History ref). -->
+
     <section v-for="(rec, i) in records" :key="i" class="report-page" data-report-page>
       <header class="rp-header">
         <div>
