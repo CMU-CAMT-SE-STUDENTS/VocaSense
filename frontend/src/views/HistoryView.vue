@@ -203,11 +203,20 @@
               </div>
             </div>
 
-            <button type="button" class="btn-export" disabled title="Available in a future update">
+            <button type="button" class="btn-export" :class="{ active: exportMode }" :disabled="!filteredRecords.length" @click="toggleExportMode">
               <svg viewBox="0 0 24 24" fill="none" class="export-icon"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Export
+              {{ exportMode ? 'Cancel' : 'Export' }}
             </button>
           </div>
+        </div>
+
+        <div v-if="exportMode" class="export-bar">
+          <span class="export-bar-count">{{ exportSelectedIds.size }} selected</span>
+          <button type="button" class="export-bar-link" @click="toggleSelectAll">
+            {{ allFilteredSelected ? 'Clear selection' : 'Select all' }}
+          </button>
+          <ExportMenu class="export-bar-menu" label="Download" :disabled="!exportSelectedIds.size" :busy="exporting" @export="handleExport" />
+          <p v-if="exportError" class="export-bar-error" role="alert">{{ exportError }}</p>
         </div>
 
         <div class="record-body">
@@ -221,9 +230,12 @@
                 v-for="rec in visibleGroupItems(group)"
                 :key="rec.id"
                 class="record-item"
-                :class="{ selected: rec.id === selectedId }"
-                @click="openRecordDetail(rec.id)"
+                :class="{ selected: !exportMode && rec.id === selectedId, 'export-selected': exportMode && exportSelectedIds.has(rec.id) }"
+                @click="exportMode ? toggleExportSelect(rec.id) : openRecordDetail(rec.id)"
               >
+                <span v-if="exportMode" class="record-check" :class="{ checked: exportSelectedIds.has(rec.id) }" aria-hidden="true">
+                  <svg v-if="exportSelectedIds.has(rec.id)" viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
                 <span class="record-dot" :class="'risk-dot-' + rec.risk"></span>
                 <span class="record-date-col">
                   <span class="record-date">{{ formatDate(rec.date) }}</span>
@@ -292,6 +304,8 @@
         </div>
       </section>
 
+      <ExportReport ref="exportReportEl" :records="exportRecords" />
+
       </template>
 
       <div v-else-if="!recordsLoading" class="history-empty">
@@ -329,6 +343,9 @@ import Navbar from '@/components/NavBar.vue'
 import { supabase } from '@/utils/supabase'
 import { backendApi } from '@/utils/backendApi'
 import { OVERALL_META, buildMetrics, buildRecommendations, qualityFromAnalysisRow } from '@/utils/voiceInsights'
+import ExportMenu from '@/components/ExportMenu.vue'
+import ExportReport from '@/components/ExportReport.vue'
+import { exportReport } from '@/utils/exportReport'
 import CheckMarkIcon from '@/assets/icons/check_mark.png'
 import SparklesIcon from '@/assets/icons/Sparkles_1.png'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
@@ -857,6 +874,70 @@ function groupHasMore(group) {
 const selectedRecord = computed(
   () => filteredRecords.value.find((r) => r.id === selectedId.value) || filteredRecords.value[0] || null
 )
+
+// ── Export (PDF / PNG) ───────────────────────────────────────────────
+// Feature #7: the member ticks specific past records, then downloads them.
+// Each exported record carries exactly what its detail panel shows (status,
+// three metrics, recommendations) — no score chart or list chrome.
+const exportMode = ref(false)
+const exportSelectedIds = ref(new Set())
+const exporting = ref(false)
+const exportError = ref('')
+const exportReportEl = ref(null)
+
+function toggleExportMode() {
+  exportMode.value = !exportMode.value
+  exportSelectedIds.value = new Set()
+  exportError.value = ''
+}
+function toggleExportSelect(id) {
+  const next = new Set(exportSelectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  exportSelectedIds.value = next
+}
+const allFilteredSelected = computed(
+  () => filteredRecords.value.length > 0 && filteredRecords.value.every((r) => exportSelectedIds.value.has(r.id))
+)
+function toggleSelectAll() {
+  exportSelectedIds.value = allFilteredSelected.value ? new Set() : new Set(filteredRecords.value.map((r) => r.id))
+}
+// A record hidden by a filter change must not stay silently selected.
+watch(filteredRecords, (list) => {
+  if (!exportSelectedIds.value.size) return
+  const visible = new Set(list.map((r) => r.id))
+  exportSelectedIds.value = new Set([...exportSelectedIds.value].filter((id) => visible.has(id)))
+})
+
+const exportRecords = computed(() =>
+  filteredRecords.value
+    .filter((r) => exportSelectedIds.value.has(r.id))
+    .map((r) => ({
+      dateLabel: formatDate(r.date),
+      time: r.time,
+      risk: r.risk,
+      resultLabel: r.resultLabel,
+      metrics: r.metrics,
+      recommendations: r.recommendations
+    }))
+)
+
+async function handleExport(format) {
+  exportError.value = ''
+  exporting.value = true
+  try {
+    const recs = exportRecords.value
+    const name = recs.length === 1
+      ? `vocasense-record-${filteredRecords.value.find((r) => exportSelectedIds.value.has(r.id)).date.toISOString().slice(0, 10)}`
+      : `vocasense-records-${recs.length}`
+    await exportReport(exportReportEl.value.$el, { format, filename: name, records: recs })
+  } catch (err) {
+    console.error('Export failed', err)
+    exportError.value = 'Could not create the export. Please try again.'
+  } finally {
+    exporting.value = false
+  }
+}
 
 function riskIconBgClass(risk) {
   return risk === 'low' ? 'status-icon-healthy' : 'risk-bg-' + risk
@@ -1416,9 +1497,8 @@ function formatDate(date) {
   margin-left: auto;
 }
 
-/* Matches .dropdown-trigger's shape/border exactly so it reads as one of the
-   same set of controls; always disabled, so no separate :disabled override
-   or "Coming soon" badge — the dimmed look plus the hover tooltip says enough. */
+/* Matches .dropdown-trigger's shape/border so it reads as one of the same
+   set of controls. Toggles record-selection mode (see .export-bar). */
 .btn-export {
   margin-left: auto;
   display: inline-flex;
@@ -1431,15 +1511,72 @@ function formatDate(date) {
   font-family: 'Poppins', sans-serif;
   font-size: 12.5px;
   font-weight: 600;
-  color: #8a94a8;
-  opacity: 0.6;
-  cursor: not-allowed;
+  color: #6594e4;
+  cursor: pointer;
 }
+
+.btn-export:hover:not(:disabled) { background: #f4f7ff; }
+.btn-export.active { background: #eaf1ff; color: #3d6fd1; }
+.btn-export:disabled { opacity: 0.6; cursor: not-allowed; color: #8a94a8; }
 
 .export-icon {
   width: 14px;
   height: 14px;
 }
+
+.export-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: #f4f7ff;
+  border: 1px solid rgba(101, 148, 228, 0.18);
+  border-radius: 14px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+}
+
+.export-bar-count { font-size: 12.5px; font-weight: 700; color: #3d6fd1; }
+
+.export-bar-link {
+  border: none;
+  background: transparent;
+  padding: 2px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6594e4;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.export-bar-menu { margin-left: auto; }
+
+.export-bar-error {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #c83d3d;
+}
+
+.record-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1.5px solid rgba(101, 148, 228, 0.5);
+  background: #fff;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.record-check.checked { background: #6594e4; border-color: #6594e4; }
+.record-check svg { width: 11px; height: 11px; }
+
+.record-item.export-selected { background: #eaf1ff; }
 
 .dropdown {
   position: relative;
