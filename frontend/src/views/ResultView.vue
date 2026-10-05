@@ -24,11 +24,12 @@
         </div>
 
         <div class="topbar-actions">
-          <button class="btn-ghost" type="button" disabled title="Available in a future update">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Export
-          </button>
+          <ExportMenu :busy="exporting" @export="handleExport" />
         </div>
+      </div>
+      <p v-if="exportError" class="export-error" role="alert">{{ exportError }}</p>
+      <div ref="exportRoot">
+        <ExportReport :records="exportRecords" />
       </div>
 
       <div class="disclaimer-banner">
@@ -162,6 +163,9 @@ import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import { syncAccountScope } from '@/utils/accountScope'
 import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, buildRecommendations } from '@/utils/voiceInsights'
+import ExportMenu from '@/components/ExportMenu.vue'
+import ExportReport from '@/components/ExportReport.vue'
+import { exportReport } from '@/utils/exportReport'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
 import AudioIcon from '@/assets/icons/audio.png'
 import WaterIcon from '@/assets/icons/water.png'
@@ -329,6 +333,41 @@ const voiceBaseline = computed(() => {
 const recommendations = computed(() =>
   buildRecommendations(quality.value, selfAssessment.value, voiceBaseline.value)
 )
+
+// ── Export (PDF / PNG) ───────────────────────────────────────────────
+// Guest and member both export only the recording on screen (UC-10 / Feature #7).
+const exportRoot = ref(null)
+const exporting = ref(false)
+const exportError = ref('')
+
+const exportRecords = computed(() => {
+  if (!quality.value) return []
+  const iso = sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')
+  const date = iso ? new Date(iso) : new Date()
+  return [{
+    dateLabel: date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+    time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    risk: overallMeta.value.level,
+    resultLabel: overallMeta.value.badge,
+    subtitle: overallMeta.value.subtitle,
+    metrics: metrics.value,
+    recommendations: recommendations.value
+  }]
+})
+
+async function handleExport(format) {
+  exportError.value = ''
+  exporting.value = true
+  try {
+    const stamp = new Date().toISOString().slice(0, 10)
+    await exportReport(exportRoot.value, { format, filename: `vocasense-result-${stamp}`, records: exportRecords.value })
+  } catch (err) {
+    console.error('Export failed', err)
+    exportError.value = 'Could not create the export. Please try again.'
+  } finally {
+    exporting.value = false
+  }
+}
 
 // ── Icons ────────────────────────────────────────────────────────────
 const StatusIcon = (props) => {
@@ -601,6 +640,14 @@ const RecommendationIcon = (props) => {
 }
 
 .btn-ghost:disabled:hover { background: #fff; }
+
+.export-error {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #c83d3d;
+  text-align: right;
+}
 
 /* ── Disclaimer ── */
 .disclaimer-banner {
