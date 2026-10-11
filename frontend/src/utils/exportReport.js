@@ -20,6 +20,8 @@ async function capturePages(root) {
   // Poppins is loaded from Google Fonts; capture before it resolves and the
   // report would fall back to a default font.
   if (document.fonts?.ready) await document.fonts.ready
+  // The logo is an <img> that only starts decoding once the pages render.
+  await Promise.all([...root.querySelectorAll('img')].map((img) => img.decode?.().catch(() => {})))
   const pages = [...root.querySelectorAll('[data-report-page]')]
   const canvases = []
   for (const page of pages) {
@@ -30,33 +32,47 @@ async function capturePages(root) {
 
 const toBlob = (canvas, type) => new Promise((resolve) => canvas.toBlob(resolve, type))
 
-// One record -> one PNG; several records -> stacked into a single tall PNG.
+// Browsers cap canvas height (~32,000px in Chrome, far less on some phones), so
+// only a few pages are stacked into one tall PNG; longer reports (a summary plus
+// many detail pages) are downloaded as one PNG per page instead.
+const MAX_STACKED_PAGES = 4
+
 async function savePng(root, filename) {
   const canvases = await capturePages(root)
-  let target = canvases[0]
-  if (canvases.length > 1) {
-    target = document.createElement('canvas')
-    target.width = Math.max(...canvases.map((c) => c.width))
-    target.height = canvases.reduce((sum, c) => sum + c.height, 0)
-    const ctx = target.getContext('2d')
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, target.width, target.height)
-    let y = 0
-    for (const c of canvases) {
-      ctx.drawImage(c, 0, y)
-      y += c.height
+  if (canvases.length === 1) {
+    download(await toBlob(canvases[0], 'image/png'), `${filename}.png`)
+    return
+  }
+  if (canvases.length > MAX_STACKED_PAGES) {
+    const digits = String(canvases.length).length
+    for (let i = 0; i < canvases.length; i++) {
+      download(await toBlob(canvases[i], 'image/png'), `${filename}-page${String(i + 1).padStart(digits, '0')}.png`)
+      await new Promise((r) => setTimeout(r, 250)) // let the browser accept each download
     }
+    return
+  }
+  const target = document.createElement('canvas')
+  target.width = Math.max(...canvases.map((c) => c.width))
+  target.height = canvases.reduce((sum, c) => sum + c.height, 0)
+  const ctx = target.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, target.width, target.height)
+  let y = 0
+  for (const c of canvases) {
+    ctx.drawImage(c, 0, y)
+    y += c.height
   }
   download(await toBlob(target, 'image/png'), `${filename}.png`)
 }
 
-// `records` is the same array given to <ExportReport>; `root` is its element.
-export async function exportReport(root, { format, filename, records }) {
-  if (!records.length) throw new Error('Nothing to export')
+// `report` is the model given to <ExportReport> (see buildReport in
+// exportModel.js); `root` is that component's element.
+export async function exportReport(root, { format, filename, report }) {
+  if (!report) throw new Error('Nothing to export')
   if (format === 'png') {
     await savePng(root, filename)
   } else {
     const { buildReportPdf } = await import('./exportPdf')
-    await buildReportPdf(records, filename)
+    await buildReportPdf(report, filename)
   }
 }

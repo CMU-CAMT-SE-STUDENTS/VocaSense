@@ -24,12 +24,12 @@
         </div>
 
         <div class="topbar-actions">
-          <ExportMenu :busy="exporting" @export="handleExport" />
+          <ExportMenu :busy="exporting" :show-lifestyle-option="isMember && !!voiceBaseline" @export="handleExport" />
         </div>
       </div>
       <p v-if="exportError" class="export-error" role="alert">{{ exportError }}</p>
       <div ref="exportRoot">
-        <ExportReport :records="exportRecords" />
+        <ExportReport :report="exportReportModel" />
       </div>
 
       <div class="disclaimer-banner">
@@ -158,7 +158,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, h } from 'vue'
+import { ref, computed, nextTick, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import { syncAccountScope } from '@/utils/accountScope'
@@ -166,6 +166,7 @@ import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, buildRecom
 import ExportMenu from '@/components/ExportMenu.vue'
 import ExportReport from '@/components/ExportReport.vue'
 import { exportReport } from '@/utils/exportReport'
+import { buildReport, exportUsername } from '@/utils/exportModel'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
 import AudioIcon from '@/assets/icons/audio.png'
 import WaterIcon from '@/assets/icons/water.png'
@@ -178,6 +179,7 @@ import CheckMarkIcon from '@/assets/icons/check_mark.png'
 const router = useRouter()
 const result = ref(null)
 const isMember = ref(false)
+const username = ref(null) // shown on the exported report (guests have none)
 const isLoading = ref(true)
 
 onMounted(async () => {
@@ -188,6 +190,7 @@ onMounted(async () => {
 
     const { data } = await supabase.auth.getSession()
     isMember.value = !!data.session?.user
+    username.value = exportUsername(data.session?.user?.user_metadata?.username || data.session?.user?.email)
 
     // Must run before the sessionStorage fallback read below — if the
     // signed-in account differs from whoever last left data on this
@@ -340,32 +343,48 @@ const exportRoot = ref(null)
 const exporting = ref(false)
 const exportError = ref('')
 
-const exportRecords = computed(() => {
-  if (!quality.value) return []
-  const iso = sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')
-  const date = iso ? new Date(iso) : new Date()
-  return [{
-    dateLabel: date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
-    time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-    risk: overallMeta.value.level,
-    resultLabel: overallMeta.value.badge,
-    subtitle: overallMeta.value.subtitle,
-    metrics: metrics.value,
-    recommendations: recommendations.value
-  }]
-})
+const exportReportModel = ref(null)
 
-async function handleExport(format) {
+async function handleExport(format, options) {
   exportError.value = ''
   exporting.value = true
   try {
+    if (!quality.value) return
+    const iso = sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')
+    const rawId = sessionStorage.getItem('vocasense:lastAnalysisId')
+    const q = quality.value
+    const report = buildReport(
+      [{
+        dateObj: iso ? new Date(iso) : new Date(),
+        analysisId: rawId && /^\d+$/.test(rawId) ? rawId : null,
+        risk: overallMeta.value.level,
+        resultLabel: overallMeta.value.badge,
+        subtitle: overallMeta.value.subtitle,
+        score: q.voice_quality?.voice_quality_score,
+        scores: {
+          clarity: q.clarity?.clarity_score,
+          stability: q.stability?.stability_score,
+          hoarseness: q.hoarseness_risk?.hoarseness_risk_score
+        },
+        metrics: metrics.value,
+        recommendations: recommendations.value,
+        features: result.value?.features || null,
+        assessment: selfAssessment.value,
+        // Guests have no baseline; ignore anything a previous account left in this browser.
+        baseline: isMember.value ? voiceBaseline.value : null
+      }],
+      { username: isMember.value ? username.value : null, generatedAt: new Date(), options }
+    )
+    exportReportModel.value = report
+    await nextTick() // let <ExportReport> render the page the PNG export captures
     const stamp = new Date().toISOString().slice(0, 10)
-    await exportReport(exportRoot.value, { format, filename: `vocasense-result-${stamp}`, records: exportRecords.value })
+    await exportReport(exportRoot.value, { format, filename: `vocasense-result-${stamp}`, report })
   } catch (err) {
     console.error('Export failed', err)
     exportError.value = 'Could not create the export. Please try again.'
   } finally {
     exporting.value = false
+    exportReportModel.value = null
   }
 }
 

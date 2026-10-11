@@ -215,7 +215,15 @@
           <button type="button" class="export-bar-link" @click="toggleSelectAll">
             {{ allFilteredSelected ? 'Clear selection' : 'Select all' }}
           </button>
-          <ExportMenu class="export-bar-menu" label="Download" :disabled="!exportSelectedIds.size" :busy="exporting" @export="handleExport" />
+          <ExportMenu
+            class="export-bar-menu"
+            label="Download"
+            :disabled="!exportSelectedIds.size"
+            :busy="exporting"
+            :show-sub-scores-option="exportSelectedIds.size > 1"
+            :show-lifestyle-option="!!baselineAnswers"
+            @export="handleExport"
+          />
           <p v-if="exportError" class="export-bar-error" role="alert">{{ exportError }}</p>
         </div>
 
@@ -304,7 +312,7 @@
         </div>
       </section>
 
-      <ExportReport ref="exportReportEl" :records="exportRecords" />
+      <ExportReport ref="exportReportEl" :report="exportReportModel" />
 
       </template>
 
@@ -337,7 +345,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, h } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Navbar from '@/components/NavBar.vue'
 import { supabase } from '@/utils/supabase'
@@ -346,6 +354,7 @@ import { OVERALL_META, buildMetrics, buildRecommendations, qualityFromAnalysisRo
 import ExportMenu from '@/components/ExportMenu.vue'
 import ExportReport from '@/components/ExportReport.vue'
 import { exportReport } from '@/utils/exportReport'
+import { buildReport, exportUsername } from '@/utils/exportModel'
 import CheckMarkIcon from '@/assets/icons/check_mark.png'
 import SparklesIcon from '@/assets/icons/Sparkles_1.png'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
@@ -361,6 +370,7 @@ const goHome = () => router.push('/')
 
 const displayName = ref('there')
 const records = ref([])
+const baselineAnswers = ref(null) // member's one-time baseline profile (export context)
 const recordsLoading = ref(true)
 
 // Turns one `analysis` row (optionally with its linked recording_assessment
@@ -380,7 +390,12 @@ function mapAnalysisRow(row, baselineAnswers) {
     score: row.voice_quality_score,
     resultLabel: meta.badge,
     metrics: buildMetrics(quality),
-    recommendations: buildRecommendations(quality, assessmentRow?.answers, baselineAnswers)
+    recommendations: buildRecommendations(quality, assessmentRow?.answers, baselineAnswers),
+    // Extra detail only the export uses (acoustic table, recording context, chart lines).
+    scores: { clarity: row.clarity_score, stability: row.stability_score, hoarseness: row.hoarseness_score },
+    features: row.features || null,
+    assessment: assessmentRow?.answers || null,
+    scoringVersion: row.scoring_version || null
   }
 }
 
@@ -428,6 +443,7 @@ async function loadHistory() {
       supabase.from('member_baseline').select('answers').eq('user_id', user.id).maybeSingle(),
     ])
 
+    baselineAnswers.value = baselineRow?.answers || null
     records.value = (analysisRows || []).map((row) => mapAnalysisRow(row, baselineRow?.answers))
     if (records.value.length) {
       selectedId.value = records.value.reduce((a, b) => (b.date > a.date ? b : a)).id
@@ -877,8 +893,8 @@ const selectedRecord = computed(
 
 // ── Export (PDF / PNG) ───────────────────────────────────────────────
 // Feature #7: the member ticks specific past records, then downloads them.
-// Each exported record carries exactly what its detail panel shows (status,
-// three metrics, recommendations) — no score chart or list chrome.
+// One selected record -> the detailed single-session report; two or more -> an
+// analysis summary (trend chart, key observations, baseline) + comparison table.
 const exportMode = ref(false)
 const exportSelectedIds = ref(new Set())
 const exporting = ref(false)
@@ -909,33 +925,57 @@ watch(filteredRecords, (list) => {
   exportSelectedIds.value = new Set([...exportSelectedIds.value].filter((id) => visible.has(id)))
 })
 
-const exportRecords = computed(() =>
-  filteredRecords.value
-    .filter((r) => exportSelectedIds.value.has(r.id))
-    .map((r) => ({
-      dateLabel: formatDate(r.date),
-      time: r.time,
-      risk: r.risk,
-      resultLabel: r.resultLabel,
-      metrics: r.metrics,
-      recommendations: r.recommendations
-    }))
+const exportReportModel = ref(null)
+
+const exportFilterLabel = computed(() =>
+  [dateFilter.value !== 'All Time' ? dateFilter.value : null, riskFilter.value !== 'all' ? riskFilterLabel.value : null]
+    .filter(Boolean)
+    .join(' · ')
 )
 
-async function handleExport(format) {
+// One session keeps the detailed layout; several become a summary + comparison
+// table (see utils/exportModel.js). `options` come from the Download menu.
+async function handleExport(format, options) {
   exportError.value = ''
   exporting.value = true
   try {
-    const recs = exportRecords.value
-    const name = recs.length === 1
-      ? `vocasense-record-${filteredRecords.value.find((r) => exportSelectedIds.value.has(r.id)).date.toISOString().slice(0, 10)}`
-      : `vocasense-records-${recs.length}`
-    await exportReport(exportReportEl.value.$el, { format, filename: name, records: recs })
+    const selected = filteredRecords.value.filter((r) => exportSelectedIds.value.has(r.id))
+    if (!selected.length) return
+    const report = buildReport(
+      selected.map((r) => ({
+        id: r.id,
+        analysisId: r.id,
+        dateObj: r.date,
+        risk: r.risk,
+        resultLabel: r.resultLabel,
+        score: r.score,
+        scores: r.scores,
+        metrics: r.metrics,
+        recommendations: r.recommendations,
+        features: r.features,
+        assessment: r.assessment,
+        scoringVersion: r.scoringVersion
+      })),
+      {
+        username: exportUsername(displayName.value),
+        generatedAt: new Date(),
+        options,
+        baseline: baselineAnswers.value,
+        filterLabel: exportFilterLabel.value
+      }
+    )
+    exportReportModel.value = report
+    await nextTick() // let <ExportReport> render the pages the PNG export captures
+    const name = selected.length === 1
+      ? `vocasense-record-${selected[0].date.toISOString().slice(0, 10)}`
+      : `vocasense-records-${selected.length}`
+    await exportReport(exportReportEl.value.$el, { format, filename: name, report })
   } catch (err) {
     console.error('Export failed', err)
     exportError.value = 'Could not create the export. Please try again.'
   } finally {
     exporting.value = false
+    exportReportModel.value = null
   }
 }
 

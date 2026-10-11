@@ -5,6 +5,18 @@
       {{ busy ? 'Exporting…' : label }}
     </button>
     <div v-if="open" class="export-options">
+      <template v-if="showSubScoresOption || showLifestyleOption">
+        <p class="export-group-label">Include</p>
+        <label v-if="showSubScoresOption" class="export-check">
+          <input v-model="options.includeSubScores" type="checkbox" />
+          <span>Clarity, stability &amp; hoarseness in the chart</span>
+        </label>
+        <label v-if="showLifestyleOption" class="export-check">
+          <input v-model="options.includeLifestyle" type="checkbox" />
+          <span>Smoking &amp; alcohol history</span>
+        </label>
+        <div class="export-divider"></div>
+      </template>
       <button type="button" class="export-option" @click="choose('pdf')">Save as PDF</button>
       <button type="button" class="export-option" @click="choose('png')">Save as PNG</button>
     </div>
@@ -12,21 +24,28 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { DEFAULT_EXPORT_OPTIONS } from '@/utils/exportModel'
 
 defineProps({
   disabled: Boolean,
   busy: Boolean,
-  label: { type: String, default: 'Export' }
+  label: { type: String, default: 'Export' },
+  // Only offered when it changes the report: the chart exists for 2+ sessions,
+  // and smoking/alcohol only exist for members who filled in a baseline.
+  showSubScoresOption: Boolean,
+  showLifestyleOption: Boolean
 })
 const emit = defineEmits(['export'])
 
 const open = ref(false)
 const rootEl = ref(null)
+// Both default to off: personal lifestyle details are opt-in.
+const options = reactive({ ...DEFAULT_EXPORT_OPTIONS })
 
 function choose(format) {
   open.value = false
-  emit('export', format)
+  emit('export', format, { ...options })
 }
 
 const onDocClick = (e) => {
@@ -63,6 +82,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   top: calc(100% + 8px);
   right: 0;
   min-width: 100%;
+  width: max-content;
+  max-width: 280px;
   background: #fff;
   border-radius: 12px;
   border: 1px solid rgba(101, 148, 228, 0.15);
@@ -88,4 +109,28 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   cursor: pointer;
 }
 .export-option:hover { background: #f4f7ff; color: #6594e4; }
+
+.export-group-label {
+  margin: 4px 12px 2px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #8b96ad;
+}
+.export-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: #444;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.export-check input { margin-top: 2px; accent-color: #6594e4; }
+.export-divider { height: 1px; background: rgba(101, 148, 228, 0.15); margin: 4px 6px; }
 </style>
