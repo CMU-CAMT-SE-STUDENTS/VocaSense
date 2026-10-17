@@ -21,6 +21,16 @@ const pad2 = (n) => String(n).padStart(2, '0')
 export function shortDate(date) {
   return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${pad2(date.getFullYear() % 100)}`
 }
+// "1 – 7 October 2026", "29 August – 7 October 2026", or with both years when they differ.
+export function periodText(first, last) {
+  if (first.getFullYear() !== last.getFullYear()) return `${longDate(first)} – ${longDate(last)}`
+  const day = (d) => d.getDate()
+  const month = (d) => d.toLocaleDateString('en-GB', { month: 'long' })
+  if (first.getMonth() === last.getMonth()) {
+    return day(first) === day(last) ? longDate(last) : `${day(first)} – ${day(last)} ${month(last)} ${last.getFullYear()}`
+  }
+  return `${day(first)} ${month(first)} – ${day(last)} ${month(last)} ${last.getFullYear()}`
+}
 export function longDate(date) {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 }
@@ -84,24 +94,21 @@ export function acousticRows(features) {
     if (raw === null) continue
     const value = raw * f.scale
     const withUnit = (v) => `${fixed(v, f.digits)}${f.unit ? ' ' + f.unit : ''}`
-    // Like a lab result sheet: the reference range sits before the value, and a
-    // value outside it is flagged (H = above the reference, L = below it) and
-    // coloured by how far out it is. In-range values stay plain.
+    // Like a lab result sheet: the normal range sits before the value, and a value
+    // outside it is shown in bold red. In-range values stay plain.
     let reference = '–'
-    let flag = ''
+    let abnormal = false
     let level = null
     if (f.good !== undefined) {
       const good = f.good * f.scale
       reference = `${f.reverse ? '≤' : '≥'} ${withUnit(good)}`
-      const moderate = f.moderate * f.scale
       const ok = f.reverse ? value <= good : value >= good
-      const mild = f.reverse ? value <= moderate : value >= moderate
       if (!ok) {
-        flag = f.reverse ? 'H' : 'L'
-        level = mild ? 'moderate' : 'high'
+        abnormal = true
+        level = 'high' // anything outside the reference is shown in red, like a lab sheet
       }
     }
-    rows.push({ name: f.name, reference, value: `${withUnit(value)}${flag ? ' ' + flag : ''}`, abnormal: !!flag, level })
+    rows.push({ name: f.name, reference, value: withUnit(value), abnormal, level })
   }
   return rows
 }
@@ -254,15 +261,21 @@ function pickTicks(n, max = 5) {
   return [...idx]
 }
 
-// VQ Change colouring: any rise is green, a small drop orange, a drop of 10
-// points or more red. The first session has nothing to compare against.
+// VQ Change: a drop is shown in red, a rise or no change stays plain. The first
+// session has nothing to compare against.
 function changeCell(delta) {
-  if (delta === null) return { text: '–', level: null }
+  if (delta === null) return { text: '–', abnormal: false }
   const rounded = Math.round(delta * 10) / 10
-  const text = `${rounded > 0 ? '+' : ''}${rounded.toFixed(1)}`
-  if (rounded > 0) return { text, level: 'low' }
-  if (rounded === 0) return { text, level: null }
-  return { text, level: rounded <= -10 ? 'high' : 'moderate' }
+  return { text: `${rounded > 0 ? '+' : ''}${rounded.toFixed(1)}`, abnormal: rounded < 0 }
+}
+
+// Normal ranges shown in the comparison table's "Normal range" row. A value outside
+// its range is printed in bold red.
+export const COMPARISON_REFERENCE = {
+  quality: { text: '≥ 70', ok: (v) => v >= 70 },
+  clarity: { text: '≥ 70', ok: (v) => v >= 70 },
+  stability: { text: '≥ 70', ok: (v) => v >= 70 },
+  hoarseness: { text: '≤ 50', ok: (v) => v <= 50 } // risk score: lower is better
 }
 
 // records: [{ id, dateObj, risk, resultLabel, score, scores:{clarity,stability,hoarseness},
@@ -301,6 +314,20 @@ export function buildSummaryReport(records, ctx) {
     ? { score: fixed(get.overall(r)), date: shortDate(r.dateObj), level: r.risk || scoreLevel(get.overall(r)) }
     : { score: '–', date: '', level: null })
 
+  // Direction of travel: latest scored session minus the first scored one. A drop is
+  // shown in red, like any other value that is moving the wrong way.
+  const trend = (() => {
+    if (scored.length < 2) return { text: '–', abnormal: false, sub: 'needs 2+ sessions' }
+    const first = scored[0]
+    const last = scored[scored.length - 1]
+    const d = Math.round((get.overall(last) - get.overall(first)) * 10) / 10
+    return {
+      text: `${d > 0 ? '+' : d < 0 ? '-' : ''}${Math.abs(d).toFixed(1)}`,
+      abnormal: d < 0,
+      sub: `${shortDate(first.dateObj)} → ${shortDate(last.dateObj)}`
+    }
+  })()
+
   const risk = { high: 0, moderate: 0, low: 0 }
   rows.forEach((r) => { if (risk[r.risk] !== undefined) risk[r.risk]++ })
 
@@ -311,11 +338,15 @@ export function buildSummaryReport(records, ctx) {
     const metric = (kind) => (r.metrics || []).find((m) => m.kind === kind)
     const cell = (kind, scoreVal) => {
       const m = metric(kind)
-      return m ? { text: `${m.value}${Number.isFinite(scoreVal) ? ` (${Math.round(scoreVal)})` : ''}`, level: m.level } : { text: '–', level: null }
+      if (!m) return { text: '–', abnormal: false }
+      const ref = COMPARISON_REFERENCE[kind]
+      const abnormal = Number.isFinite(scoreVal) && !ref.ok(scoreVal)
+      return { text: `${m.value}${Number.isFinite(scoreVal) ? ` (${Math.round(scoreVal)})` : ''}`, abnormal }
     }
+    const qualityAbnormal = Number.isFinite(score) && !COMPARISON_REFERENCE.quality.ok(score)
     return {
       session: `${i + 1}. ${shortDate(r.dateObj)} ${clockTime(r.dateObj)}`,
-      quality: { text: fixed(score), level: r.risk || scoreLevel(score) },
+      quality: { text: fixed(score), abnormal: qualityAbnormal },
       clarity: cell('clarity', get.clarity(r)),
       stability: cell('stability', get.stability(r)),
       hoarseness: cell('hoarseness', get.hoarseness(r)),
@@ -343,7 +374,8 @@ export function buildSummaryReport(records, ctx) {
       ctx.filterLabel ? `Filter: ${ctx.filterLabel}` : null
     ].filter(Boolean).join('  |  '),
     period,
-    headerDate: { label: 'Period', lines: [longDate(first), `to ${longDate(last)}`] },
+    headerDate: null, // the period sits under the "Analysis Summary" title instead
+    periodText: periodText(first, last),
     sessionCount: n,
     chart: {
       color: LINE_COLOR,
@@ -356,7 +388,8 @@ export function buildSummaryReport(records, ctx) {
     summary: {
       average: { score: fixed(avg), level: avg === null ? null : scoreLevel(avg) },
       highest: stat(best),
-      lowest: stat(worst)
+      lowest: stat(worst),
+      trend
     },
     riskCounts: risk,
     baseline: {
@@ -364,6 +397,7 @@ export function buildSummaryReport(records, ctx) {
       rows: [...general, ...lifestyle]
     },
     comparisonPages,
+    comparisonReference: ['quality', 'clarity', 'stability', 'hoarseness'].map((k) => COMPARISON_REFERENCE[k].text).concat('–'),
     details,
     scoringVersions: versions
   }

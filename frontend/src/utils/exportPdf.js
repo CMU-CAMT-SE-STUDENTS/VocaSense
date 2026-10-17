@@ -104,11 +104,13 @@ function drawHeader(pdf, d, report, logo) {
 
   // Top-right: the recording date (or the period a summary covers).
   const hd = report.headerDate
-  d.font('semibold', 7, '#8b96ad')
-  pdf.text(hd.label.toUpperCase(), PAGE_W - MARGIN, 14, { align: 'right' })
-  d.font('semibold', 8.5, MUTED)
-  pdf.text(hd.lines[0], PAGE_W - MARGIN, 19.5, { align: 'right' })
-  pdf.text(hd.lines[1], PAGE_W - MARGIN, 25, { align: 'right' })
+  if (hd) {
+    d.font('semibold', 7, '#8b96ad')
+    pdf.text(hd.label.toUpperCase(), PAGE_W - MARGIN, 14, { align: 'right' })
+    d.font('semibold', 8.5, MUTED)
+    pdf.text(hd.lines[0], PAGE_W - MARGIN, 19.5, { align: 'right' })
+    pdf.text(hd.lines[1], PAGE_W - MARGIN, 25, { align: 'right' })
+  }
 
   pdf.setDrawColor(RULE)
   pdf.setLineWidth(0.9)
@@ -226,7 +228,7 @@ function drawSingle(pdf, d, report, newPage) {
 
   if (hasTable) {
     const cols = [32, 36, tableW - 68]
-    const heads = ['Feature', 'Reference', 'Value']
+    const heads = ['Feature', 'Normal range', 'Value']
     let x = MARGIN
     heads.forEach((h, i) => {
       d.rect(x, y, cols[i], rowH, '#f4f7ff', '#1a1a2e')
@@ -240,7 +242,7 @@ function drawSingle(pdf, d, report, newPage) {
       x = MARGIN
       cells.forEach((c, i) => {
         d.rect(x, ry, cols[i], rowH, null, '#1a1a2e')
-        // Out-of-range values are bold and coloured, like an H / L flag on a lab report.
+        // Out-of-range values are bold red, like an abnormal result on a lab report.
         const flagged = i === 2 && row.abnormal
         const color = flagged ? (RISK[row.level] || RISK.moderate).text : INK
         d.font(flagged ? 'bold' : 'normal', 7.5, color)
@@ -292,7 +294,10 @@ function drawSummary(pdf, d, report) {
   let y = CONTENT_TOP + 6
   d.font('bold', 21, INK)
   pdf.text('Analysis Summary', PAGE_W / 2, y, { align: 'center' })
-  y += 10
+  y += 6
+  d.font('semibold', 9, '#8b96ad')
+  pdf.text(report.periodText, PAGE_W / 2, y, { align: 'center' })
+  y += 8
 
   // Chart title + legend of the guide bands (centered)
   d.font('semibold', 9, '#4a5470')
@@ -358,17 +363,18 @@ function drawSummary(pdf, d, report) {
   })
   y = plotY + plotH + 13
 
-  // Summary: average / highest / lowest overall score
+  // Summary: average / highest / lowest overall score, and the change since the first session
   d.font('bold', 13, INK)
   pdf.text('Summary', MARGIN, y)
   y += 5
   const colX = [MARGIN + 4, MARGIN + CONTENT_W / 2 + 4]
   const sgap = 4
-  const sw = (CONTENT_W - sgap * 2) / 3
+  const sw = (CONTENT_W - sgap * 3) / 4
   ;[
     ['Average score', report.summary.average.score, report.summary.average.level, `across ${report.sessionCount} sessions`],
     ['Highest score', report.summary.highest.score, report.summary.highest.level, report.summary.highest.date],
-    ['Lowest score', report.summary.lowest.score, report.summary.lowest.level, report.summary.lowest.date]
+    ['Lowest score', report.summary.lowest.score, report.summary.lowest.level, report.summary.lowest.date],
+    ['Change since first', report.summary.trend.text, report.summary.trend.abnormal ? 'high' : null, report.summary.trend.sub]
   ].forEach(([label, value, level, sub], i) => {
     const x = MARGIN + i * (sw + sgap)
     d.box(x, y, sw, 24, '#ffffff', 3.5, '#dde4f2')
@@ -379,9 +385,12 @@ function drawSummary(pdf, d, report) {
     d.font('normal', 7.5, '#8b96ad')
     pdf.text(sub || '', x + 5, y + 20.5)
   })
-  y += 24 + 5
+  y += 24 + 6
 
-  // Risk counts as chips
+  // Risk counts as chips, with a caption saying what is being counted
+  d.font('semibold', 8, '#6b7690')
+  pdf.text('Sessions by risk level', MARGIN, y)
+  y += 3.5
   let cx = MARGIN
   ;[
     ['high', `High risk: ${report.riskCounts.high}`],
@@ -420,7 +429,7 @@ function drawSummary(pdf, d, report) {
 
 // ── session comparison table ─────────────────────────────────────────
 
-function drawComparison(pdf, d, rows) {
+function drawComparison(pdf, d, rows, reference) {
   let y = CONTENT_TOP + 6
   d.font('bold', 21, INK)
   pdf.text('Session Comparison', PAGE_W / 2, y, { align: 'center' })
@@ -438,31 +447,31 @@ function drawComparison(pdf, d, rows) {
   })
   y += rowH
 
+  // "Normal range" row: tells the reader what a good value looks like.
+  x = MARGIN
+  ;['Normal range', ...reference].forEach((text, i) => {
+    d.rect(x, y, cols[i], rowH, '#f4f7ff', '#1a1a2e')
+    d.font('semibold', 7.5, '#5b6680')
+    pdf.text(text, i === 0 ? x + 2.5 : x + cols[i] / 2, y + 5.5, { align: i === 0 ? 'left' : 'center' })
+    x += cols[i]
+  })
+  y += rowH
+
   rows.forEach((row) => {
     const cells = [
-      { text: row.session, level: null, bold: false },
-      { text: row.quality.text, level: row.quality.level, bold: true },
-      { text: row.clarity.text, level: row.clarity.level, bold: false },
-      { text: row.stability.text, level: row.stability.level, bold: false },
-      { text: row.hoarseness.text, level: row.hoarseness.level, bold: false },
-      { text: row.change.text, level: row.change.level, bold: false, fill: true }
+      { text: row.session, abnormal: false },
+      ...['quality', 'clarity', 'stability', 'hoarseness', 'change'].map((k) => row[k])
     ]
     x = MARGIN
     cells.forEach((c, i) => {
-      const risk = c.level ? RISK[c.level] : null
-      const fillColor = c.fill && risk ? risk.badgeBg : null
-      d.rect(x, y, cols[i], rowH, fillColor, fillColor ? '#1a1a2e' : '#1a1a2e')
-      d.font(c.bold ? 'bold' : 'normal', 7.5, risk ? risk.text : INK)
+      d.rect(x, y, cols[i], rowH, null, '#1a1a2e')
+      // Outside the normal range: bold red text.
+      d.font(c.abnormal ? 'bold' : 'normal', 7.5, c.abnormal ? RISK.high.text : INK)
       pdf.text(c.text, i === 0 ? x + 2.5 : x + cols[i] / 2, y + 5.5, { align: i === 0 ? 'left' : 'center' })
       x += cols[i]
     })
     y += rowH
   })
-
-  y += 5
-  d.font('normal', 7.5, '#8b96ad')
-  const note = 'Voice quality, clarity and stability: higher is better. Hoarseness is a risk score: lower is better. VQ change compares each session with the one before it.'
-  pdf.text(pdf.splitTextToSize(note, CONTENT_W), MARGIN, y)
 }
 
 // ── entry points ─────────────────────────────────────────────────────
@@ -498,7 +507,7 @@ async function render(report) {
     drawSummary(pdf, d, report)
     report.comparisonPages.forEach((rows) => {
       startPage(report, 'comparison')
-      drawComparison(pdf, d, rows)
+      drawComparison(pdf, d, rows, report.comparisonReference)
     })
     report.details.forEach(drawDetail)
   }
@@ -518,8 +527,8 @@ async function render(report) {
     pdf.setLineWidth(0.3)
     pdf.line(MARGIN, FOOTER_Y - 4, PAGE_W - MARGIN, FOOTER_Y - 4)
     d.font('normal', 7.5, '#8b96ad')
-    pdf.text(`Generated by VocaSense · Report exported on ${longDate(rep.generatedAt)}, ${clockTime(rep.generatedAt)}${versionText}`, MARGIN, FOOTER_Y)
-    if (total > 1) pdf.text(`${p} / ${total}`, PAGE_W - MARGIN, FOOTER_Y, { align: 'right' })
+    pdf.text(`Report exported on ${longDate(rep.generatedAt)}, ${clockTime(rep.generatedAt)}`, MARGIN, FOOTER_Y)
+    pdf.text(`Generated by VocaSense${versionText}${total > 1 ? ` · ${p} / ${total}` : ''}`, PAGE_W - MARGIN, FOOTER_Y, { align: 'right' })
   }
 
   pdf.setProperties({ title: 'VocaSense Voice Analysis Report', creator: 'VocaSense' })
