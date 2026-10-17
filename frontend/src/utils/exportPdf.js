@@ -241,11 +241,12 @@ function drawSingle(pdf, d, report, newPage) {
       const cells = [row.name, row.reference, row.value]
       x = MARGIN
       cells.forEach((c, i) => {
-        d.rect(x, ry, cols[i], rowH, null, '#1a1a2e')
+        // The Normal range column is tinted, like the "Normal range" row of the comparison table.
+        d.rect(x, ry, cols[i], rowH, i === 1 ? '#f4f7ff' : null, '#1a1a2e')
         // Out-of-range values are bold red, like an abnormal result on a lab report.
         const flagged = i === 2 && row.abnormal
-        const color = flagged ? (RISK[row.level] || RISK.moderate).text : INK
-        d.font(flagged ? 'bold' : 'normal', 7.5, color)
+        const color = flagged ? (RISK[row.level] || RISK.moderate).text : i === 1 ? '#5b6680' : INK
+        d.font(flagged ? 'bold' : i === 1 ? 'semibold' : 'normal', 7.5, color)
         pdf.text(c, x + 2, ry + 4.7)
         x += cols[i]
       })

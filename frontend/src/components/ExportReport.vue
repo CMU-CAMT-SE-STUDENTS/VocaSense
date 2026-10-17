@@ -55,7 +55,7 @@
                 <tbody>
                   <tr v-for="row in r.acoustic" :key="row.name">
                     <td>{{ row.name }}</td>
-                    <td>{{ row.reference }}</td>
+                    <td class="rp-ref-cell">{{ row.reference }}</td>
                     <td :class="row.abnormal ? ['rp-abnormal', 'risk-text-' + row.level] : ''">{{ row.value }}</td>
                   </tr>
                 </tbody>
@@ -308,7 +308,8 @@ const yPos = (y) => PT + (1 - y) * (CH - PT - PB)
 .rp-note { margin: 0; font-size: 10.5px; color: #8b96ad; }
 .rp-baseline { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 24px; padding-left: 8px; }
 
-.rp-ref-row td { background: #f4f7ff; color: #5b6680; font-weight: 600; }
+.rp-ref-row td,
+.rp-ref-cell { background: #f4f7ff; color: #5b6680; font-weight: 600; }
 .rp-compare th { text-align: center; }
 .rp-compare td { text-align: center; }
 .rp-compare td:first-child { text-align: left; white-space: nowrap; }
