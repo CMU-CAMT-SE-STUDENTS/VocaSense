@@ -24,7 +24,7 @@
         </div>
 
         <div class="topbar-actions">
-          <ExportMenu :busy="exporting" :show-lifestyle-option="isMember && !!voiceBaseline" @export="handleExport" />
+          <ExportMenu :busy="exporting" @export="handleExport" />
         </div>
       </div>
       <p v-if="exportError" class="export-error" role="alert">{{ exportError }}</p>
@@ -166,7 +166,7 @@ import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, buildRecom
 import ExportMenu from '@/components/ExportMenu.vue'
 import ExportReport from '@/components/ExportReport.vue'
 import { exportReport } from '@/utils/exportReport'
-import { buildReport, exportUsername } from '@/utils/exportModel'
+import { buildReport } from '@/utils/exportModel'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
 import AudioIcon from '@/assets/icons/audio.png'
 import WaterIcon from '@/assets/icons/water.png'
@@ -179,7 +179,7 @@ import CheckMarkIcon from '@/assets/icons/check_mark.png'
 const router = useRouter()
 const result = ref(null)
 const isMember = ref(false)
-const username = ref(null) // shown on the exported report (guests have none)
+const userId = ref(null) // shown on the exported report (guests have none)
 const isLoading = ref(true)
 
 onMounted(async () => {
@@ -190,7 +190,7 @@ onMounted(async () => {
 
     const { data } = await supabase.auth.getSession()
     isMember.value = !!data.session?.user
-    username.value = exportUsername(data.session?.user?.user_metadata?.username || data.session?.user?.email)
+    userId.value = data.session?.user?.id ?? null
 
     // Must run before the sessionStorage fallback read below — if the
     // signed-in account differs from whoever last left data on this
@@ -345,18 +345,16 @@ const exportError = ref('')
 
 const exportReportModel = ref(null)
 
-async function handleExport(format, options) {
+async function handleExport(format) {
   exportError.value = ''
   exporting.value = true
   try {
     if (!quality.value) return
     const iso = sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')
-    const rawId = sessionStorage.getItem('vocasense:lastAnalysisId')
     const q = quality.value
     const report = buildReport(
       [{
         dateObj: iso ? new Date(iso) : new Date(),
-        analysisId: rawId && /^\d+$/.test(rawId) ? rawId : null,
         risk: overallMeta.value.level,
         resultLabel: overallMeta.value.badge,
         subtitle: overallMeta.value.subtitle,
@@ -373,7 +371,7 @@ async function handleExport(format, options) {
         // Guests have no baseline; ignore anything a previous account left in this browser.
         baseline: isMember.value ? voiceBaseline.value : null
       }],
-      { username: isMember.value ? username.value : null, generatedAt: new Date(), options }
+      { userId: isMember.value ? userId.value : null, generatedAt: new Date() }
     )
     exportReportModel.value = report
     await nextTick() // let <ExportReport> render the page the PNG export captures

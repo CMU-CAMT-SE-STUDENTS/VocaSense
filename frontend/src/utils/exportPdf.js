@@ -13,7 +13,7 @@ const PAGE_H = 297
 const MARGIN = 15
 const CONTENT_W = PAGE_W - MARGIN * 2
 const FOOTER_Y = PAGE_H - 12
-const BOTTOM_LIMIT = FOOTER_Y - 8
+const BOTTOM_LIMIT = FOOTER_Y - 20 // keeps content clear of the footer disclaimer
 const CONTENT_TOP = 46 // first y below the header
 
 const BLUE = '#6594e4'
@@ -26,6 +26,7 @@ const RISK = {
   moderate: { badgeBg: '#ffe9d2', text: '#b7791f', cardBg: '#fffdf4' },
   high: { badgeBg: '#fdd9d3', text: '#c83d3d', cardBg: '#fff4f4' }
 }
+const BAND_FILL = { low: '#eefaf3', moderate: '#fff6e9', high: '#fdeeec' }
 const PRIORITY = {
   high: { bg: '#ffe5e0', text: '#c83d3d', dot: '#f43333', label: 'High Priority' },
   moderate: { bg: '#fff5e0', text: '#c68e3f', dot: '#f47033', label: 'Moderate Priority' }
@@ -101,9 +102,13 @@ function drawHeader(pdf, d, report, logo) {
   d.font('semibold', 7.5, '#7b869c')
   pdf.text(pdf.splitTextToSize(report.meta, CONTENT_W - 45), MARGIN, 34.5)
 
-  d.font('semibold', 8.5, '#8b96ad')
-  pdf.text(longDate(report.generatedAt), PAGE_W - MARGIN, 18, { align: 'right' })
-  pdf.text(clockTime(report.generatedAt), PAGE_W - MARGIN, 23.5, { align: 'right' })
+  // Top-right: the recording date (or the period a summary covers).
+  const hd = report.headerDate
+  d.font('semibold', 7, '#8b96ad')
+  pdf.text(hd.label.toUpperCase(), PAGE_W - MARGIN, 14, { align: 'right' })
+  d.font('semibold', 8.5, MUTED)
+  pdf.text(hd.lines[0], PAGE_W - MARGIN, 19.5, { align: 'right' })
+  pdf.text(hd.lines[1], PAGE_W - MARGIN, 25, { align: 'right' })
 
   pdf.setDrawColor(RULE)
   pdf.setLineWidth(0.9)
@@ -115,16 +120,7 @@ function drawHeader(pdf, d, report, logo) {
 function drawSingle(pdf, d, report, newPage) {
   let y = CONTENT_TOP
 
-  // Disclaimer
-  d.font('normal', 8, '#3d5a99')
-  const discLines = pdf.splitTextToSize(DISCLAIMER, CONTENT_W - 10)
-  const discH = 6 + 4 + discLines.length * 3.7
-  d.box(MARGIN, y, CONTENT_W, discH, '#d9e6fc', 3, '#b4cdf5')
-  d.font('bold', 8, '#3d5a99')
-  pdf.text('Medical Disclaimer', MARGIN + 5, y + 6)
-  d.font('normal', 8, '#3d5a99')
-  pdf.text(discLines, MARGIN + 5, y + 10.5)
-  y += discH + 9
+  y += 4
 
   // Status + score
   const risk = RISK[report.risk] || RISK.moderate
@@ -229,8 +225,8 @@ function drawSingle(pdf, d, report, newPage) {
   y += 5
 
   if (hasTable) {
-    const cols = [26, 22, 24, tableW - 72]
-    const heads = ['Feature', 'Value', 'Reference', 'Interpretation']
+    const cols = [32, 36, tableW - 68]
+    const heads = ['Feature', 'Reference', 'Value']
     let x = MARGIN
     heads.forEach((h, i) => {
       d.rect(x, y, cols[i], rowH, '#f4f7ff', '#1a1a2e')
@@ -240,12 +236,14 @@ function drawSingle(pdf, d, report, newPage) {
     })
     let ry = y + rowH
     report.acoustic.forEach((row) => {
-      const cells = [row.name, row.value, row.reference, row.interpretation]
+      const cells = [row.name, row.reference, row.value]
       x = MARGIN
       cells.forEach((c, i) => {
         d.rect(x, ry, cols[i], rowH, null, '#1a1a2e')
-        const color = i === 3 && row.level ? (RISK[row.level] || RISK.moderate).text : INK
-        d.font(i === 3 ? 'semibold' : 'normal', 7.5, color)
+        // Out-of-range values are bold and coloured, like an H / L flag on a lab report.
+        const flagged = i === 2 && row.abnormal
+        const color = flagged ? (RISK[row.level] || RISK.moderate).text : INK
+        d.font(flagged ? 'bold' : 'normal', 7.5, color)
         pdf.text(c, x + 2, ry + 4.7)
         x += cols[i]
       })
@@ -294,22 +292,24 @@ function drawSummary(pdf, d, report) {
   let y = CONTENT_TOP + 6
   d.font('bold', 21, INK)
   pdf.text('Analysis Summary', PAGE_W / 2, y, { align: 'center' })
-  y += 6
-  d.font('semibold', 9, '#8b96ad')
-  pdf.text(`From ${report.period.replace(' – ', ' to ')}`, PAGE_W / 2, y, { align: 'center' })
-  y += 8
+  y += 10
 
-  // Legend (centered)
+  // Chart title + legend of the guide bands (centered)
+  d.font('semibold', 9, '#4a5470')
+  pdf.text('Overall voice quality score', PAGE_W / 2, y, { align: 'center' })
+  y += 5.5
   d.font('normal', 7.5, '#4a5470')
-  const items = report.chart.series.map((s) => ({ ...s, w: pdf.getTextWidth(s.label) + 6 }))
+  const items = report.chart.bands.map((bd) => ({ ...bd, w: pdf.getTextWidth(bd.label) + 8 }))
   const totalW = items.reduce((s, i) => s + i.w + 6, -6)
   let lx = (PAGE_W - totalW) / 2
-  items.forEach((s) => {
-    pdf.setFillColor(s.color)
-    pdf.circle(lx + 1.3, y - 0.9, 1.3, 'F')
+  items.forEach((bd) => {
+    pdf.setFillColor(BAND_FILL[bd.level])
+    pdf.setDrawColor(RISK[bd.level].text)
+    pdf.setLineWidth(0.2)
+    pdf.roundedRect(lx, y - 2.6, 4.2, 3, 0.6, 0.6, 'FD')
     d.font('normal', 7.5, '#4a5470')
-    pdf.text(s.label, lx + 4, y)
-    lx += s.w + 6
+    pdf.text(bd.label, lx + 6, y)
+    lx += bd.w + 6
   })
   y += 5
 
@@ -318,51 +318,71 @@ function drawSummary(pdf, d, report) {
   const plotW = CONTENT_W - 9 - 2
   const plotY = y + 2
   const plotH = 62
+  const yAt = (v) => plotY + (1 - v / 100) * plotH
+  // Guide bands: where a score counts as low / moderate / high risk.
+  report.chart.bands.forEach((bd) => {
+    pdf.setFillColor(BAND_FILL[bd.level])
+    pdf.rect(plotX, yAt(bd.to), plotW, yAt(bd.from) - yAt(bd.to), 'F')
+  })
   d.font('normal', 7, '#6b7690')
   report.chart.yTicks.forEach((t) => {
-    const ty = plotY + (1 - t / 100) * plotH
+    const ty = yAt(t)
     pdf.setDrawColor('#e6eaf2')
     pdf.setLineWidth(0.2)
     pdf.line(plotX, ty, plotX + plotW, ty)
     pdf.text(String(t), plotX - 2.5, ty + 1.1, { align: 'right' })
   })
+  // Dashed threshold lines at the band edges (70 and 50).
+  pdf.setLineDashPattern([1.2, 1.2], 0)
+  pdf.setLineWidth(0.25)
+  report.chart.bands.filter((bd) => bd.from > 0).forEach((bd) => {
+    pdf.setDrawColor(RISK[bd.level].text)
+    pdf.line(plotX, yAt(bd.from), plotX + plotW, yAt(bd.from))
+  })
+  pdf.setLineDashPattern([], 0)
+  d.font('normal', 7, '#6b7690')
   report.chart.xTicks.forEach((t) => {
     pdf.text(t.label, plotX + t.x * plotW, plotY + plotH + 5, { align: 'center' })
   })
   pdf.setLineJoin('round')
   pdf.setLineCap('round')
-  report.chart.series.forEach((s) => {
-    const pts = s.points.map((p) => [plotX + p.x * plotW, plotY + (1 - p.y) * plotH])
-    pdf.setDrawColor(s.color)
-    pdf.setLineWidth(0.6)
-    for (let i = 1; i < pts.length; i++) pdf.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1])
-    pdf.setFillColor(s.color)
-    pts.forEach(([px, py]) => pdf.circle(px, py, 1, 'F'))
+  const pts = report.chart.points.map((p) => ({ x: plotX + p.x * plotW, y: plotY + (1 - p.y) * plotH, level: p.level }))
+  pdf.setDrawColor(report.chart.color)
+  pdf.setLineWidth(0.6)
+  for (let i = 1; i < pts.length; i++) pdf.line(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y)
+  pdf.setDrawColor('#ffffff')
+  pdf.setLineWidth(0.3)
+  pts.forEach((p) => {
+    pdf.setFillColor(RISK[p.level].text)
+    pdf.circle(p.x, p.y, 1.3, 'FD')
   })
   y = plotY + plotH + 13
 
-  // Key observations
+  // Summary: average / highest / lowest overall score
   d.font('bold', 13, INK)
-  pdf.text('Key Observations', MARGIN, y)
-  y += 7
+  pdf.text('Summary', MARGIN, y)
+  y += 5
   const colX = [MARGIN + 4, MARGIN + CONTENT_W / 2 + 4]
-  const obs = [
-    ...report.observations.map((o) => ({ label: o.label, value: `Avg: ${o.avg} | Min: ${o.min} | Max: ${o.max}` })),
-    { label: 'Best record', value: report.best },
-    { label: 'Lowest voice quality', value: report.worst }
-  ]
-  obs.forEach((o, i) => {
-    const x = colX[i % 2]
-    const oy = y + Math.floor(i / 2) * 12.5
-    d.font('bold', 9.5, INK)
-    pdf.text(o.label, x, oy)
-    d.font('normal', 8.5, INK)
-    pdf.text(o.value, x, oy + 5)
+  const sgap = 4
+  const sw = (CONTENT_W - sgap * 2) / 3
+  ;[
+    ['Average score', report.summary.average.score, report.summary.average.level, `across ${report.sessionCount} sessions`],
+    ['Highest score', report.summary.highest.score, report.summary.highest.level, report.summary.highest.date],
+    ['Lowest score', report.summary.lowest.score, report.summary.lowest.level, report.summary.lowest.date]
+  ].forEach(([label, value, level, sub], i) => {
+    const x = MARGIN + i * (sw + sgap)
+    d.box(x, y, sw, 24, '#ffffff', 3.5, '#dde4f2')
+    d.font('normal', 8, '#5b6680')
+    pdf.text(label, x + 5, y + 6.5)
+    d.font('bold', 18, level ? RISK[level].text : INK)
+    pdf.text(String(value), x + 5, y + 15.5)
+    d.font('normal', 7.5, '#8b96ad')
+    pdf.text(sub || '', x + 5, y + 20.5)
   })
-  y += Math.ceil(obs.length / 2) * 12.5 + 1
+  y += 24 + 5
 
   // Risk counts as chips
-  let cx = MARGIN + 4
+  let cx = MARGIN
   ;[
     ['high', `High risk: ${report.riskCounts.high}`],
     ['moderate', `Moderate risk: ${report.riskCounts.moderate}`],
@@ -488,18 +508,17 @@ async function render(report) {
   const total = pdf.getNumberOfPages()
   for (let p = 1; p <= total; p++) {
     pdf.setPage(p)
-    const { kind, rep } = pages[p - 1]
+    const { rep } = pages[p - 1]
     const versions = versionsOf(rep)
     const versionText = versions.length ? ` · scoring v${versions.join(', v')}` : ''
-    if (kind !== 'single') {
-      d.font('normal', 6.8, '#8b96ad')
-      pdf.text(pdf.splitTextToSize(DISCLAIMER, CONTENT_W), MARGIN, FOOTER_Y - 12)
-    }
+    // Medical disclaimer: small and muted, at the bottom of every page.
+    d.font('normal', 6.5, '#a3acbf')
+    pdf.text(pdf.splitTextToSize(`Medical disclaimer: ${DISCLAIMER}`, CONTENT_W), MARGIN, FOOTER_Y - 12)
     pdf.setDrawColor('#c9d6ee')
     pdf.setLineWidth(0.3)
     pdf.line(MARGIN, FOOTER_Y - 4, PAGE_W - MARGIN, FOOTER_Y - 4)
-    d.font('normal', 8, '#8b96ad')
-    pdf.text(`Generated by VocaSense${versionText}`, MARGIN, FOOTER_Y)
+    d.font('normal', 7.5, '#8b96ad')
+    pdf.text(`Generated by VocaSense · Report exported on ${longDate(rep.generatedAt)}, ${clockTime(rep.generatedAt)}${versionText}`, MARGIN, FOOTER_Y)
     if (total > 1) pdf.text(`${p} / ${total}`, PAGE_W - MARGIN, FOOTER_Y, { align: 'right' })
   }
 

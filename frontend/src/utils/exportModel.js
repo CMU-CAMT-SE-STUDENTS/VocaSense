@@ -5,17 +5,12 @@
 // Two report shapes (Feature #7):
 //   • single  – one session: status, metrics, recommendations, acoustic table,
 //               recording context, relevant baseline factors
-//   • summary – 2+ sessions: trend chart, key observations, baseline context,
+//   • summary – 2+ sessions: trend chart, summary, baseline context,
 //               a session-comparison table (paginated), then one single-session
 //               detail page per selected record
 
 export const DISCLAIMER =
   'This platform provides preliminary voice health insights and does not replace professional medical diagnosis. Please consult a healthcare professional for medical concerns.'
-
-export const DEFAULT_EXPORT_OPTIONS = Object.freeze({
-  includeSubScores: false, // summary chart: also plot Clarity / Stability / Hoarseness
-  includeLifestyle: false // baseline: also show smoking & alcohol history
-})
 
 export const COMPARISON_ROWS_PER_PAGE = 22
 
@@ -32,6 +27,9 @@ export function longDate(date) {
 export function clockTime(date) {
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 }
+
+// Account ids are long UUIDs; the first 8 characters are enough to tell reports apart.
+export const shortUserId = (id) => String(id).slice(0, 8)
 
 const num = (v) => {
   if (v === '' || v === null || v === undefined) return null
@@ -86,8 +84,11 @@ export function acousticRows(features) {
     if (raw === null) continue
     const value = raw * f.scale
     const withUnit = (v) => `${fixed(v, f.digits)}${f.unit ? ' ' + f.unit : ''}`
+    // Like a lab result sheet: the reference range sits before the value, and a
+    // value outside it is flagged (H = above the reference, L = below it) and
+    // coloured by how far out it is. In-range values stay plain.
     let reference = '–'
-    let interpretation = '–'
+    let flag = ''
     let level = null
     if (f.good !== undefined) {
       const good = f.good * f.scale
@@ -95,11 +96,12 @@ export function acousticRows(features) {
       const moderate = f.moderate * f.scale
       const ok = f.reverse ? value <= good : value >= good
       const mild = f.reverse ? value <= moderate : value >= moderate
-      if (ok) { interpretation = 'Within expected range'; level = 'low' }
-      else if (mild) { interpretation = f.reverse ? 'Slightly elevated' : 'Slightly reduced'; level = 'moderate' }
-      else { interpretation = f.reverse ? 'Elevated' : 'Reduced'; level = 'high' }
+      if (!ok) {
+        flag = f.reverse ? 'H' : 'L'
+        level = mild ? 'moderate' : 'high'
+      }
     }
-    rows.push({ name: f.name, value: withUnit(value), reference, interpretation, level })
+    rows.push({ name: f.name, reference, value: `${withUnit(value)}${flag ? ' ' + flag : ''}`, abnormal: !!flag, level })
   }
   return rows
 }
@@ -149,8 +151,8 @@ function statusLine(status, current, quit, perWhat) {
   return null
 }
 
-// `general` is always safe to show (age / sex change how acoustic values are
-// read); `lifestyle` (smoking, alcohol) is only shown when the user opts in.
+// `general` (age / sex change how acoustic values are read) and `lifestyle`
+// (smoking, alcohol) are both included in every exported report.
 export function baselineRows(b) {
   if (!b || typeof b !== 'object') return { general: [], lifestyle: [] }
   const general = []
@@ -199,10 +201,9 @@ export function baselineRows(b) {
 // ── single-session model ─────────────────────────────────────────────
 
 // input: { dateObj, risk, resultLabel, subtitle?, score?, scores?, metrics, recommendations,
-//          features?, assessment?, baseline?, analysisId?, scoringVersion? }
-// ctx:   { username (null = guest), generatedAt, options, baseline? }
+//          features?, assessment?, baseline?, scoringVersion? }
+// ctx:   { userId (null = guest), generatedAt, baseline? }
 export function buildSingleReport(input, ctx) {
-  const options = { ...DEFAULT_EXPORT_OPTIONS, ...(ctx.options || {}) }
   const date = input.dateObj
   const { lifestyle } = baselineRows(input.baseline ?? ctx.baseline)
   const score = num(input.score)
@@ -210,16 +211,17 @@ export function buildSingleReport(input, ctx) {
     type: 'single',
     generatedAt: ctx.generatedAt,
     meta: [
-      ctx.username ? `Username: ${ctx.username}` : 'Guest session',
-      input.analysisId ? `Analysis ID: ${input.analysisId}` : null,
-      `Recorded: ${shortDate(date)}, ${clockTime(date)}`
-    ].filter(Boolean).join('  |  '),
+      ctx.userId ? `User ID: ${shortUserId(ctx.userId)}` : 'Guest session'
+    ].join('  |  '),
+    // Top-right of the page: when this recording was made.
+    headerDate: { label: 'Recorded', lines: [longDate(date), clockTime(date)] },
     risk: input.risk,
     resultLabel: input.resultLabel,
     subtitle: input.subtitle || '',
     score,
     scoreText: fixed(score),
-    scoreLevel: scoreLevel(score),
+    // Colour the score with the same level as the status badge so the two always agree.
+    scoreLevel: input.risk || scoreLevel(score),
     metrics: (input.metrics || []).map((m) => {
       const s = num(input.scores?.[m.kind])
       return { ...m, scoreText: s === null ? '' : fixed(s) }
@@ -227,27 +229,23 @@ export function buildSingleReport(input, ctx) {
     recommendations: input.recommendations || [],
     acoustic: acousticRows(input.features),
     context: recordingContext(input.assessment),
-    baselineFactors: options.includeLifestyle ? lifestyle : [],
+    baselineFactors: lifestyle,
     scoringVersion: input.scoringVersion || null
   }
 }
 
 // ── multi-session model ──────────────────────────────────────────────
 
-// Colours match the app's palette; Hoarseness is red because it is the one
-// line where lower is better (see hoarsenessNote).
-const SERIES = [
-  { key: 'overall', label: 'Overall', color: '#4f7df3' },
-  { key: 'clarity', label: 'Clarity', color: '#a47df3' },
-  { key: 'stability', label: 'Stability', color: '#f0b45a' },
-  { key: 'hoarseness', label: 'Hoarseness (lower is better)', color: '#f0523d' }
-]
+// The trend chart plots the overall voice quality score only.
+const LINE_COLOR = '#4f7df3'
 
-const stats = (values) => {
-  const v = values.filter((x) => Number.isFinite(x))
-  if (!v.length) return { avg: null, min: null, max: null }
-  return { avg: v.reduce((s, x) => s + x, 0) / v.length, min: Math.min(...v), max: Math.max(...v) }
-}
+// Guide bands behind the chart, matching scoreLevel(): 70+ low risk, 50–69
+// moderate, below 50 high. Dots are coloured by the band they fall in.
+const BANDS = [
+  { from: 70, to: 100, level: 'low', label: 'Low risk (70+)' },
+  { from: 50, to: 70, level: 'moderate', label: 'Moderate (50–69)' },
+  { from: 0, to: 50, level: 'high', label: 'High risk (below 50)' }
+]
 
 function pickTicks(n, max = 5) {
   if (n <= max) return Array.from({ length: n }, (_, i) => i)
@@ -269,9 +267,8 @@ function changeCell(delta) {
 
 // records: [{ id, dateObj, risk, resultLabel, score, scores:{clarity,stability,hoarseness},
 //             metrics, scoringVersion? }]  (any order)
-// ctx: { username, generatedAt, options, baseline?, filterLabel? }
+// ctx: { userId, generatedAt, baseline?, filterLabel? }
 export function buildSummaryReport(records, ctx) {
-  const options = { ...DEFAULT_EXPORT_OPTIONS, ...(ctx.options || {}) }
   const rows = [...records].sort((a, b) => a.dateObj - b.dateObj)
   const first = rows[0].dateObj
   const last = rows[rows.length - 1].dateObj
@@ -286,28 +283,23 @@ export function buildSummaryReport(records, ctx) {
 
   // Chart geometry in 0..1 space (y: 0 = score 0, 1 = score 100; x spread evenly
   // over sessions) so the SVG and PDF renderers just scale it.
-  const keys = options.includeSubScores ? SERIES.map((s) => s.key) : ['overall']
   const n = rows.length
   const xAt = (i) => (n === 1 ? 0.5 : i / (n - 1))
-  const series = SERIES.filter((s) => keys.includes(s.key)).map((s) => ({
-    key: s.key,
-    label: s.label,
-    color: s.color,
-    points: rows
-      .map((r, i) => ({ x: xAt(i), y: Math.max(0, Math.min(100, get[s.key](r))) / 100, valid: Number.isFinite(get[s.key](r)) }))
-      .filter((p) => p.valid)
-  }))
+  const points = rows
+    .map((r, i) => {
+      const v = get.overall(r)
+      return { x: xAt(i), y: Math.max(0, Math.min(100, v)) / 100, level: r.risk || scoreLevel(v), valid: Number.isFinite(v) }
+    })
+    .filter((p) => p.valid)
   const xTicks = pickTicks(n).map((i) => ({ x: xAt(i), label: shortDate(rows[i].dateObj).slice(0, 5) }))
-
-  const observation = (key, label) => {
-    const s = stats(rows.map(get[key]))
-    return { label, avg: fixed(s.avg), min: fixed(s.min), max: fixed(s.max) }
-  }
 
   const scored = rows.filter((r) => Number.isFinite(get.overall(r)))
   const best = scored.length ? scored.reduce((a, b) => (get.overall(b) > get.overall(a) ? b : a)) : null
   const worst = scored.length ? scored.reduce((a, b) => (get.overall(b) < get.overall(a) ? b : a)) : null
-  const bestLine = (r) => (r ? `Score ${fixed(get.overall(r))} · ${shortDate(r.dateObj)}` : '–')
+  const avg = scored.length ? scored.reduce((s, r) => s + get.overall(r), 0) / scored.length : null
+  const stat = (r) => (r
+    ? { score: fixed(get.overall(r)), date: shortDate(r.dateObj), level: r.risk || scoreLevel(get.overall(r)) }
+    : { score: '–', date: '', level: null })
 
   const risk = { high: 0, moderate: 0, low: 0 }
   rows.forEach((r) => { if (risk[r.risk] !== undefined) risk[r.risk]++ })
@@ -323,7 +315,7 @@ export function buildSummaryReport(records, ctx) {
     }
     return {
       session: `${i + 1}. ${shortDate(r.dateObj)} ${clockTime(r.dateObj)}`,
-      quality: { text: fixed(score), level: scoreLevel(score) },
+      quality: { text: fixed(score), level: r.risk || scoreLevel(score) },
       clarity: cell('clarity', get.clarity(r)),
       stability: cell('stability', get.stability(r)),
       hoarseness: cell('hoarseness', get.hoarseness(r)),
@@ -340,37 +332,36 @@ export function buildSummaryReport(records, ctx) {
 
   // The summary is followed by a full single-session page for every selected
   // record, in the same (oldest → newest) order as the comparison table.
-  const detailCtx = { ...ctx, username: ctx.username || 'Member' }
-  const details = rows.map((r) => buildSingleReport({ ...r, analysisId: r.analysisId ?? r.id }, detailCtx))
+  const details = rows.map((r) => buildSingleReport(r, ctx))
 
   return {
     type: 'summary',
     generatedAt: ctx.generatedAt,
     meta: [
-      `Username: ${ctx.username || 'Member'}`,
+      ctx.userId ? `User ID: ${shortUserId(ctx.userId)}` : 'Member',
       `Sessions: ${n}`,
-      `Period: ${period}`,
       ctx.filterLabel ? `Filter: ${ctx.filterLabel}` : null
     ].filter(Boolean).join('  |  '),
     period,
+    headerDate: { label: 'Period', lines: [longDate(first), `to ${longDate(last)}`] },
+    sessionCount: n,
     chart: {
-      series,
+      color: LINE_COLOR,
+      points,
+      bands: BANDS,
       xTicks,
-      yTicks: [0, 20, 40, 60, 80, 100],
-      showHoarsenessNote: options.includeSubScores
+      yTicks: [0, 20, 40, 60, 80, 100]
     },
-    observations: [
-      observation('overall', 'Voice Quality'),
-      observation('stability', 'Stability'),
-      observation('clarity', 'Clarity'),
-      observation('hoarseness', 'Hoarseness')
-    ],
-    best: bestLine(best),
-    worst: bestLine(worst),
+    // Plain-language summary of the overall score across the selected sessions.
+    summary: {
+      average: { score: fixed(avg), level: avg === null ? null : scoreLevel(avg) },
+      highest: stat(best),
+      lowest: stat(worst)
+    },
     riskCounts: risk,
     baseline: {
       retrievedAt: shortDate(ctx.generatedAt),
-      rows: [...general, ...(options.includeLifestyle ? lifestyle : [])]
+      rows: [...general, ...lifestyle]
     },
     comparisonPages,
     details,
@@ -384,12 +375,4 @@ export function buildSummaryReport(records, ctx) {
 export function buildReport(records, ctx) {
   if (!records.length) throw new Error('Nothing to export')
   return records.length === 1 ? buildSingleReport(records[0], ctx) : buildSummaryReport(records, ctx)
-}
-
-// Name printed in the report header. Falls back to null (shown as "Member" /
-// "Guest session"); an email is shortened to the part before the "@".
-export function exportUsername(name) {
-  if (!name || name === 'there') return null
-  const s = String(name)
-  return s.includes('@') ? s.split('@')[0] : s
 }

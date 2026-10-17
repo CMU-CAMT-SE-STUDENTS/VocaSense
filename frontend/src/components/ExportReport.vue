@@ -15,15 +15,11 @@
             <h1 class="rp-title">Voice Analysis Report</h1>
             <p class="rp-meta">{{ r.meta }}</p>
           </div>
-          <p class="rp-date">{{ longDate(r.generatedAt) }}<br />{{ clockTime(r.generatedAt) }}</p>
+          <p class="rp-date"><span class="rp-date-label">{{ r.headerDate.label }}</span><br />{{ r.headerDate.lines[0] }}<br />{{ r.headerDate.lines[1] }}</p>
         </header>
 
         <!-- ───────── single session ───────── -->
         <template v-if="page.kind === 'single'">
-          <div class="rp-disclaimer">
-            <strong>Medical Disclaimer:</strong> {{ DISCLAIMER }}
-          </div>
-
           <div class="rp-status">
             <h2 class="rp-status-title">Voice Health Status</h2>
             <p v-if="r.score !== null" class="rp-score" :class="'risk-text-' + r.scoreLevel">
@@ -54,14 +50,13 @@
             <div class="rp-context">
               <table v-if="r.acoustic.length" class="rp-table">
                 <thead>
-                  <tr><th>Feature</th><th>Value</th><th>Reference</th><th>Interpretation</th></tr>
+                  <tr><th>Feature</th><th>Reference</th><th>Value</th></tr>
                 </thead>
                 <tbody>
                   <tr v-for="row in r.acoustic" :key="row.name">
                     <td>{{ row.name }}</td>
-                    <td>{{ row.value }}</td>
                     <td>{{ row.reference }}</td>
-                    <td :class="row.level ? 'risk-text-' + row.level : ''">{{ row.interpretation }}</td>
+                    <td :class="row.abnormal ? ['rp-abnormal', 'risk-text-' + row.level] : ''">{{ row.value }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -83,33 +78,41 @@
         <!-- ───────── multi-session summary ───────── -->
         <template v-else-if="page.kind === 'summary'">
           <h2 class="rp-big-title">Analysis Summary</h2>
-          <p class="rp-sub-title">From {{ r.period.replace(' – ', ' to ') }}</p>
 
+          <p class="rp-chart-title">Overall voice quality score</p>
           <div class="rp-legend">
-            <span v-for="s in r.chart.series" :key="s.key" class="rp-legend-item">
-              <i :style="{ background: s.color }"></i>{{ s.label }}
+            <span v-for="b in r.chart.bands" :key="b.level" class="rp-legend-item">
+              <i :class="'band-swatch-' + b.level"></i>{{ b.label }}
             </span>
           </div>
           <svg class="rp-chart" :viewBox="`0 0 ${CW} ${CH}`" xmlns="http://www.w3.org/2000/svg">
+            <rect v-for="b in r.chart.bands" :key="b.level" :x="PL" :width="CW - PL - PR" :y="yPos(b.to / 100)" :height="yPos(b.from / 100) - yPos(b.to / 100)" :class="'band-fill-' + b.level" />
             <g v-for="t in r.chart.yTicks" :key="t">
               <line :x1="PL" :x2="CW - PR" :y1="yPos(t / 100)" :y2="yPos(t / 100)" stroke="#e6eaf2" stroke-width="1" />
               <text :x="PL - 8" :y="yPos(t / 100) + 4" text-anchor="end" class="rp-axis">{{ t }}</text>
             </g>
             <text v-for="t in r.chart.xTicks" :key="t.label + t.x" :x="xPos(t.x)" :y="CH - 8" text-anchor="middle" class="rp-axis">{{ t.label }}</text>
-            <g v-for="s in r.chart.series" :key="s.key">
-              <polyline v-if="s.points.length > 1" :points="s.points.map((p) => `${xPos(p.x)},${yPos(p.y)}`).join(' ')" fill="none" :stroke="s.color" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />
-              <circle v-for="(p, k) in s.points" :key="k" :cx="xPos(p.x)" :cy="yPos(p.y)" r="3.4" :fill="s.color" />
-            </g>
+            <polyline v-if="r.chart.points.length > 1" :points="r.chart.points.map((p) => `${xPos(p.x)},${yPos(p.y)}`).join(' ')" fill="none" :stroke="r.chart.color" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />
+            <circle v-for="(p, k) in r.chart.points" :key="k" :cx="xPos(p.x)" :cy="yPos(p.y)" r="4" :class="'dot-' + p.level" stroke="#fff" stroke-width="1.2" />
           </svg>
 
-          <h3 class="rp-section">Key Observations</h3>
-          <div class="rp-obs">
-            <div v-for="o in r.observations" :key="o.label" class="rp-ob">
-              <strong>{{ o.label }}</strong>
-              <span>Avg: {{ o.avg }} | Min: {{ o.min }} | Max: {{ o.max }}</span>
+          <h3 class="rp-section">Summary</h3>
+          <div class="rp-stats">
+            <div class="rp-stat">
+              <span class="rp-stat-label">Average score</span>
+              <strong class="rp-stat-value" :class="r.summary.average.level ? 'risk-text-' + r.summary.average.level : ''">{{ r.summary.average.score }}</strong>
+              <span class="rp-stat-sub">across {{ r.sessionCount }} sessions</span>
             </div>
-            <div class="rp-ob"><strong>Best record</strong><span>{{ r.best }}</span></div>
-            <div class="rp-ob"><strong>Lowest voice quality</strong><span>{{ r.worst }}</span></div>
+            <div class="rp-stat">
+              <span class="rp-stat-label">Highest score</span>
+              <strong class="rp-stat-value" :class="r.summary.highest.level ? 'risk-text-' + r.summary.highest.level : ''">{{ r.summary.highest.score }}</strong>
+              <span class="rp-stat-sub">{{ r.summary.highest.date }}</span>
+            </div>
+            <div class="rp-stat">
+              <span class="rp-stat-label">Lowest score</span>
+              <strong class="rp-stat-value" :class="r.summary.lowest.level ? 'risk-text-' + r.summary.lowest.level : ''">{{ r.summary.lowest.score }}</strong>
+              <span class="rp-stat-sub">{{ r.summary.lowest.date }}</span>
+            </div>
           </div>
           <div class="rp-risk">
             <span class="risk-bg-high">High risk: {{ r.riskCounts.high }}</span>
@@ -147,9 +150,9 @@
           <p class="rp-note">Voice quality, clarity and stability: higher is better. Hoarseness is a risk score: lower is better. VQ change compares each session with the one before it.</p>
         </template>
 
-        <p v-if="page.kind !== 'single'" class="rp-foot-disclaimer">{{ DISCLAIMER }}</p>
+        <p class="rp-foot-disclaimer"><strong>Medical disclaimer:</strong> {{ DISCLAIMER }}</p>
         <footer class="rp-footer">
-          <span>Generated by VocaSense<template v-if="versionFor(r)"> · {{ versionFor(r) }}</template></span>
+          <span>Generated by VocaSense · Report exported on {{ longDate(r.generatedAt) }}, {{ clockTime(r.generatedAt) }}<template v-if="versionFor(r)"> · {{ versionFor(r) }}</template></span>
           <span v-if="pages.length > 1">{{ i + 1 }} / {{ pages.length }}</span>
         </footer>
         </template>
@@ -227,18 +230,9 @@ const yPos = (y) => PT + (1 - y) * (CH - PT - PB)
 }
 .rp-logo { height: 34px; width: auto; display: block; }
 .rp-title { margin: 6px 0 0; font-size: 26px; font-weight: 700; }
+.rp-date { margin: 0; font-size: 12.5px; font-weight: 600; color: #6b7690; text-align: right; line-height: 1.6; }
+.rp-date-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: #8b96ad; }
 .rp-meta { margin: 4px 0 0; font-size: 11.5px; font-weight: 600; color: #7b869c; }
-.rp-date { margin: 0; font-size: 12.5px; font-weight: 600; color: #8b96ad; text-align: right; line-height: 1.7; }
-
-.rp-disclaimer {
-  background: #d9e6fc;
-  border: 1px solid rgba(101, 148, 228, 0.3);
-  border-radius: 12px;
-  padding: 11px 16px;
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: #3d5a99;
-}
 
 .rp-status { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0 0; }
 .rp-status-title { margin: 0; font-size: 22px; font-weight: 700; }
@@ -271,23 +265,36 @@ const yPos = (y) => PT + (1 - y) * (CH - PT - PB)
 .rp-table { border-collapse: collapse; width: 100%; font-size: 11px; }
 .rp-table th, .rp-table td { border: 1px solid #1a1a2e; padding: 6px 8px; text-align: left; }
 .rp-table th { font-weight: 700; background: #f4f7ff; }
-.rp-table td:nth-child(-n+3) { white-space: nowrap; }
+.rp-table td { white-space: nowrap; }
+.rp-abnormal { font-weight: 700; }
 .rp-facts { border-left: 1px solid #c9d6ee; padding-left: 18px; }
 .rp-facts-title { margin: 0 0 6px; font-size: 13px; font-weight: 700; }
 .rp-facts-title-gap { margin-top: 14px; }
 .rp-fact { margin: 0 0 3px; font-size: 11.5px; line-height: 1.5; }
 
 .rp-big-title { margin: 6px 0 0; text-align: center; font-size: 28px; font-weight: 700; }
-.rp-sub-title { margin: -8px 0 0; text-align: center; font-size: 12.5px; font-weight: 600; color: #8b96ad; }
 .rp-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 18px; font-size: 11px; color: #4a5470; }
 .rp-legend-item { display: inline-flex; align-items: center; gap: 6px; }
-.rp-legend-item i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.rp-legend-item i { width: 12px; height: 9px; border-radius: 2px; display: inline-block; }
 .rp-chart { width: 100%; height: auto; display: block; }
 .rp-axis { font-size: 10.5px; fill: #6b7690; font-family: 'Poppins', sans-serif; }
 
-.rp-obs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; padding-left: 8px; }
-.rp-ob { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
-.rp-ob strong { font-size: 13.5px; }
+.rp-chart-title { margin: 0; text-align: center; font-size: 12.5px; font-weight: 600; color: #4a5470; }
+.band-swatch-low { background: #dff4e8; border: 1px solid #1f9d5b; }
+.band-swatch-moderate { background: #fdebd6; border: 1px solid #b7791f; }
+.band-swatch-high { background: #fbdcd7; border: 1px solid #c83d3d; }
+.band-fill-low { fill: #eefaf3; }
+.band-fill-moderate { fill: #fff6e9; }
+.band-fill-high { fill: #fdeeec; }
+.dot-low { fill: #1f9d5b; }
+.dot-moderate { fill: #b7791f; }
+.dot-high { fill: #c83d3d; }
+
+.rp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.rp-stat { border: 1px solid #dde4f2; border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; }
+.rp-stat-label { font-size: 11.5px; font-weight: 500; color: #5b6680; }
+.rp-stat-value { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.rp-stat-sub { font-size: 10.5px; color: #8b96ad; min-height: 1.2em; }
 .rp-risk { display: flex; gap: 10px; flex-wrap: wrap; }
 .rp-risk span { padding: 4px 12px; border-radius: 14px; font-size: 11.5px; font-weight: 600; }
 .rp-note { margin: 0; font-size: 10.5px; color: #8b96ad; }
@@ -297,7 +304,7 @@ const yPos = (y) => PT + (1 - y) * (CH - PT - PB)
 .rp-compare td { text-align: center; }
 .rp-compare td:first-child { text-align: left; white-space: nowrap; }
 
-.rp-foot-disclaimer { margin: auto 0 0; font-size: 9.5px; line-height: 1.5; color: #8b96ad; }
+.rp-foot-disclaimer { margin: auto 0 0; font-size: 9px; line-height: 1.5; color: #a3acbf; }
 .rp-footer {
   margin-top: auto;
   display: flex;
