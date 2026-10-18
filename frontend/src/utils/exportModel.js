@@ -82,18 +82,30 @@ const ACOUSTIC_FEATURES = [
   { key: 'hnr_db', name: 'HNR', unit: 'dB', scale: 1, digits: 1, good: 24.02, moderate: 16.01, reverse: false },
   { key: 'cpps_db', name: 'CPPS', unit: 'dB', scale: 1, digits: 1, good: 10.2, moderate: 6.35, reverse: false },
   // F0 depends on the speaker (sex, age) so there is no single fair reference.
-  { key: 'f0_mean_hz', name: 'F0 (mean)', unit: 'Hz', scale: 1, digits: 1 },
+  { key: 'f0_mean_hz', name: 'F0', unit: 'Hz', scale: 1, digits: 1 },
   { key: 'spectral_entropy', name: 'Spectral Entropy', unit: '', scale: 1, digits: 2, good: 5.0, moderate: 10.21, reverse: true }
 ]
 
+// Every feature always gets a row (a missing measurement shows "–"), so the table
+// reads the same on every report. With no acoustic data at all there is no table.
 export function acousticRows(features) {
   if (!features || typeof features !== 'object') return []
+  if (!ACOUSTIC_FEATURES.some((f) => num(features[f.key]) !== null)) return []
   const rows = []
   for (const f of ACOUSTIC_FEATURES) {
     const raw = num(features[f.key])
-    if (raw === null) continue
-    const value = raw * f.scale
     const withUnit = (v) => `${fixed(v, f.digits)}${f.unit ? ' ' + f.unit : ''}`
+    if (raw === null) {
+      rows.push({
+        name: f.name,
+        reference: f.good !== undefined ? `${f.reverse ? '≤' : '≥'} ${withUnit(f.good * f.scale)}` : '–',
+        value: '–',
+        abnormal: false,
+        level: null
+      })
+      continue
+    }
+    const value = raw * f.scale
     // Like a lab result sheet: the normal range sits before the value, and a value
     // outside it is shown in bold red. In-range values stay plain.
     let reference = '–'
