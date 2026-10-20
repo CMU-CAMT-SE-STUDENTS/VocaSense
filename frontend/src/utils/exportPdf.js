@@ -321,9 +321,9 @@ function drawSummary(pdf, d, report) {
 
   // Chart
   const plotX = MARGIN + 9
-  const plotW = CONTENT_W - 9 - 2
-  const plotY = y + 2
-  const plotH = 62
+  const plotW = CONTENT_W - 9 - 6 // right margin leaves room for the x-axis arrow
+  const plotY = y + 8 // room above for the y-axis arrow + title
+  const plotH = 56
   const yAt = (v) => plotY + (1 - v / 100) * plotH
   // Guide bands: where a score counts as low / moderate / high risk.
   report.chart.bands.forEach((bd) => {
@@ -346,6 +346,24 @@ function drawSummary(pdf, d, report) {
     pdf.line(plotX, yAt(bd.from), plotX + plotW, yAt(bd.from))
   })
   pdf.setLineDashPattern([], 0)
+  // Axes: solid lines with arrowheads, small tick marks and axis titles.
+  const AX = '#6b7690'
+  const x0 = plotX
+  const y0 = plotY + plotH
+  pdf.setDrawColor(AX)
+  pdf.setFillColor(AX)
+  pdf.setLineWidth(0.35)
+  pdf.setLineCap('butt')
+  pdf.line(x0, y0, x0, plotY - 3) // y axis
+  pdf.line(x0, y0, x0 + plotW + 3, y0) // x axis
+  pdf.triangle(x0 - 1.1, plotY - 3, x0 + 1.1, plotY - 3, x0, plotY - 5.6, 'F')
+  pdf.triangle(x0 + plotW + 3, y0 - 1.1, x0 + plotW + 3, y0 + 1.1, x0 + plotW + 5.6, y0, 'F')
+  pdf.setLineWidth(0.25)
+  report.chart.yTicks.forEach((t) => pdf.line(x0 - 1.2, yAt(t), x0, yAt(t)))
+  report.chart.xTicks.forEach((t) => pdf.line(x0 + t.x * plotW, y0, x0 + t.x * plotW, y0 + 1.2))
+  d.font('semibold', 7, '#4a5470')
+  pdf.text('Score (0–100)', x0 + 3, plotY - 3.4)
+  pdf.text('Date (dd/mm)', x0 + plotW / 2, y0 + 9.6, { align: 'center' })
   d.font('normal', 7, '#6b7690')
   report.chart.xTicks.forEach((t) => {
     pdf.text(t.label, plotX + t.x * plotW, plotY + plotH + 5, { align: 'center' })
@@ -362,7 +380,7 @@ function drawSummary(pdf, d, report) {
     pdf.setFillColor(RISK[p.level].text)
     pdf.circle(p.x, p.y, 1.3, 'FD')
   })
-  y = plotY + plotH + 13
+  y = plotY + plotH + 16
 
   // Summary: average / highest / lowest overall score, and the change since the first session
   d.font('bold', 13, INK)
@@ -523,8 +541,9 @@ async function render(report) {
     const versionText = versions.length ? ` · scoring v${versions.join(', v')}` : ''
     // Above the rule: document notes (disclaimer, then export date). Below: running footer.
     d.font('normal', 6.5, '#a3acbf')
-    pdf.text(pdf.splitTextToSize(`Medical disclaimer: ${DISCLAIMER}`, CONTENT_W), MARGIN, FOOTER_Y - 18)
-    pdf.text(`Report exported on ${longDate(rep.generatedAt)}, ${clockTime(rep.generatedAt)}`, MARGIN, FOOTER_Y - 8.5)
+    pdf.text(pdf.splitTextToSize(`Medical disclaimer: ${DISCLAIMER}`, CONTENT_W), MARGIN, FOOTER_Y - 16.5)
+    d.font('normal', 7.5, '#a3acbf')
+    pdf.text(`Report exported on ${longDate(rep.generatedAt)}, ${clockTime(rep.generatedAt)}`, MARGIN, FOOTER_Y - 6.5)
     pdf.setDrawColor('#c9d6ee')
     pdf.setLineWidth(0.3)
     pdf.line(MARGIN, FOOTER_Y - 4, PAGE_W - MARGIN, FOOTER_Y - 4)
