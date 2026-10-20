@@ -631,6 +631,17 @@ const RecommendationIcon = (props) => {
   margin-left: auto;
 }
 
+/* Export trigger matches the Back button (same height, radius and type size). */
+.topbar-actions :deep(.export-trigger) {
+  padding: 10px 20px;
+  border-radius: 20px;
+  border-color: rgba(101, 148, 228, 0.35);
+  font-size: 14px;
+  font-weight: 500;
+  gap: 7px;
+}
+.topbar-actions :deep(.export-trigger svg) { width: 16px; height: 16px; }
+
 .btn-ghost {
   display: inline-flex;
   align-items: center;
@@ -1204,8 +1215,18 @@ const RecommendationIcon = (props) => {
 }
 
 @media (max-width: 560px) {
-  .topbar { flex-direction: column; align-items: flex-start; }
-  .topbar-actions { width: 100%; }
+  /* Phone: Back and Export share the first row, the title sits underneath. */
+  .topbar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: 'back actions' 'title title';
+    align-items: center;
+    gap: 12px;
+  }
+  .btn-back { grid-area: back; justify-self: start; }
+  .topbar-actions { grid-area: actions; margin-left: 0; }
+  .topbar-center { grid-area: title; }
+  .btn-back, .topbar-actions :deep(.export-trigger) { padding: 9px 16px; font-size: 13px; }
   .btn-ghost { flex: 1; justify-content: center; }
   .status-card { padding: 24px 16px; }
   .status-subtitle { white-space: normal; }

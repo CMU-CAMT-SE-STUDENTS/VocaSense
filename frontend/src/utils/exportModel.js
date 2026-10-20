@@ -336,7 +336,7 @@ export function buildSummaryReport(records, ctx) {
     return {
       text: `${d > 0 ? '+' : d < 0 ? '-' : ''}${Math.abs(d).toFixed(1)}`,
       abnormal: d < 0,
-      sub: `${shortDate(first.dateObj)} → ${shortDate(last.dateObj)}`
+      sub: `${shortDate(first.dateObj)} – ${shortDate(last.dateObj)}`
     }
   })()
 

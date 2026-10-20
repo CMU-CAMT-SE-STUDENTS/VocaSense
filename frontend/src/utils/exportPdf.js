@@ -380,12 +380,9 @@ function drawSummary(pdf, d, report) {
     pdf.setFillColor(RISK[p.level].text)
     pdf.circle(p.x, p.y, 1.3, 'FD')
   })
-  y = plotY + plotH + 16
+  y = plotY + plotH + 14
 
   // Summary: average / highest / lowest overall score, and the change since the first session
-  d.font('bold', 13, INK)
-  pdf.text('Summary', MARGIN, y)
-  y += 5
   const colX = [MARGIN + 4, MARGIN + CONTENT_W / 2 + 4]
   const sgap = 4
   const sw = (CONTENT_W - sgap * 3) / 4

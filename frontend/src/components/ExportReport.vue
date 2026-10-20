@@ -107,7 +107,6 @@
             <circle v-for="(p, k) in r.chart.points" :key="k" :cx="xPos(p.x)" :cy="yPos(p.y)" r="4" :class="'dot-' + p.level" stroke="#fff" stroke-width="1.2" />
           </svg>
 
-          <h3 class="rp-section">Summary</h3>
           <div class="rp-stats">
             <div class="rp-stat">
               <span class="rp-stat-label">Average score</span>
