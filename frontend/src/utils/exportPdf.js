@@ -363,10 +363,12 @@ function drawSummary(pdf, d, report) {
   report.chart.xTicks.forEach((t) => pdf.line(x0 + t.x * plotW, y0, x0 + t.x * plotW, y0 + 1.2))
   d.font('semibold', 7, '#4a5470')
   pdf.text('Score (0–100)', x0 + 3, plotY - 3.4)
-  pdf.text(report.chart.xTitle || 'Date (dd/mm)', x0 + plotW / 2, y0 + 9.6, { align: 'center' })
+  const hasSubTick = report.chart.xTicks.some((t) => t.sub)
+  pdf.text(report.chart.xTitle || 'Date (dd/mm)', x0 + plotW / 2, y0 + (hasSubTick ? 13.4 : 9.6), { align: 'center' })
   d.font('normal', 7, '#6b7690')
   report.chart.xTicks.forEach((t) => {
     pdf.text(t.label, plotX + t.x * plotW, plotY + plotH + 5, { align: 'center' })
+    if (t.sub) pdf.text(t.sub, plotX + t.x * plotW, plotY + plotH + 8.4, { align: 'center' })
   })
   pdf.setLineJoin('round')
   pdf.setLineCap('round')
@@ -380,7 +382,7 @@ function drawSummary(pdf, d, report) {
     pdf.setFillColor(RISK[p.level].text)
     pdf.circle(p.x, p.y, 1.3, 'FD')
   })
-  y = plotY + plotH + 14
+  y = plotY + plotH + (hasSubTick ? 18 : 14)
 
   // Summary: average / highest / lowest overall score, and the change since the first session
   const colX = [MARGIN + 4, MARGIN + CONTENT_W / 2 + 4]

@@ -324,7 +324,9 @@ export function buildSummaryReport(records, ctx) {
   const dupDates = !sameDay && new Set(tickDates).size < tickDates.length
   const xTicks = tickIdx.map((i, k) => ({
     x: xAt(i),
-    label: sameDay ? clockTime(rows[i].dateObj) : dupDates ? `${tickDates[k]} ${clockTime(rows[i].dateObj)}` : tickDates[k]
+    // Date on the first line; when dates repeat, the clock time goes on a second line.
+    label: sameDay ? clockTime(rows[i].dateObj) : tickDates[k],
+    sub: !sameDay && dupDates ? clockTime(rows[i].dateObj) : ''
   }))
   const xTitle = sameDay ? 'Time of day' : dupDates ? 'Date and time (dd/mm)' : 'Date (dd/mm)'
   // Dates on the cards: only the time when the day is already in the period line.
