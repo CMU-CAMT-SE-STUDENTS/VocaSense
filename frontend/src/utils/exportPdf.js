@@ -363,7 +363,7 @@ function drawSummary(pdf, d, report) {
   report.chart.xTicks.forEach((t) => pdf.line(x0 + t.x * plotW, y0, x0 + t.x * plotW, y0 + 1.2))
   d.font('semibold', 7, '#4a5470')
   pdf.text('Score (0–100)', x0 + 3, plotY - 3.4)
-  pdf.text('Date (dd/mm)', x0 + plotW / 2, y0 + 9.6, { align: 'center' })
+  pdf.text(report.chart.xTitle || 'Date (dd/mm)', x0 + plotW / 2, y0 + 9.6, { align: 'center' })
   d.font('normal', 7, '#6b7690')
   report.chart.xTicks.forEach((t) => {
     pdf.text(t.label, plotX + t.x * plotW, plotY + plotH + 5, { align: 'center' })

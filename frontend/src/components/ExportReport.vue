@@ -101,7 +101,7 @@
             <polygon :points="`${PL - 4},${PT - 8} ${PL + 4},${PT - 8} ${PL},${PT - 17}`" fill="#6b7690" />
             <polygon :points="`${CW - PR + 10},${yPos(0) - 4} ${CW - PR + 10},${yPos(0) + 4} ${CW - PR + 19},${yPos(0)}`" fill="#6b7690" />
             <text :x="PL + 10" :y="PT - 9" class="rp-axis-title">Score (0–100)</text>
-            <text :x="PL + (CW - PL - PR) / 2" :y="CH - 3" text-anchor="middle" class="rp-axis-title">Date (dd/mm)</text>
+            <text :x="PL + (CW - PL - PR) / 2" :y="CH - 3" text-anchor="middle" class="rp-axis-title">{{ r.chart.xTitle || 'Date (dd/mm)' }}</text>
             <text v-for="t in r.chart.xTicks" :key="t.label + t.x" :x="xPos(t.x)" :y="yPos(0) + 19" text-anchor="middle" class="rp-axis">{{ t.label }}</text>
             <polyline v-if="r.chart.points.length > 1" :points="r.chart.points.map((p) => `${xPos(p.x)},${yPos(p.y)}`).join(' ')" fill="none" :stroke="r.chart.color" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />
             <circle v-for="(p, k) in r.chart.points" :key="k" :cx="xPos(p.x)" :cy="yPos(p.y)" r="4" :class="'dot-' + p.level" stroke="#fff" stroke-width="1.2" />

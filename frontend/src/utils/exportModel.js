@@ -316,14 +316,26 @@ export function buildSummaryReport(records, ctx) {
       return { x: xAt(i), y: Math.max(0, Math.min(100, v)) / 100, level: r.risk || scoreLevel(v), valid: Number.isFinite(v) }
     })
     .filter((p) => p.valid)
-  const xTicks = pickTicks(n).map((i) => ({ x: xAt(i), label: shortDate(rows[i].dateObj).slice(0, 5) }))
+  // When every selected session falls on one day (or several ticks would read the
+  // same date), the axis switches to clock times so each tick stays distinguishable.
+  const tickIdx = pickTicks(n)
+  const sameDay = new Set(rows.map((r) => shortDate(r.dateObj))).size === 1
+  const tickDates = tickIdx.map((i) => shortDate(rows[i].dateObj).slice(0, 5))
+  const dupDates = !sameDay && new Set(tickDates).size < tickDates.length
+  const xTicks = tickIdx.map((i, k) => ({
+    x: xAt(i),
+    label: sameDay ? clockTime(rows[i].dateObj) : dupDates ? `${tickDates[k]} ${clockTime(rows[i].dateObj)}` : tickDates[k]
+  }))
+  const xTitle = sameDay ? 'Time of day' : dupDates ? 'Date and time (dd/mm)' : 'Date (dd/mm)'
+  // Dates on the cards: only the time when the day is already in the period line.
+  const when = (d) => (sameDay ? clockTime(d) : shortDate(d))
 
   const scored = rows.filter((r) => Number.isFinite(get.overall(r)))
   const best = scored.length ? scored.reduce((a, b) => (get.overall(b) > get.overall(a) ? b : a)) : null
   const worst = scored.length ? scored.reduce((a, b) => (get.overall(b) < get.overall(a) ? b : a)) : null
   const avg = scored.length ? scored.reduce((s, r) => s + get.overall(r), 0) / scored.length : null
   const stat = (r) => (r
-    ? { score: fixed(get.overall(r)), date: shortDate(r.dateObj), level: r.risk || scoreLevel(get.overall(r)) }
+    ? { score: fixed(get.overall(r)), date: when(r.dateObj), level: r.risk || scoreLevel(get.overall(r)) }
     : { score: '–', date: '', level: null })
 
   // Direction of travel: latest scored session minus the first scored one. A drop is
@@ -336,7 +348,7 @@ export function buildSummaryReport(records, ctx) {
     return {
       text: `${d > 0 ? '+' : d < 0 ? '-' : ''}${Math.abs(d).toFixed(1)}`,
       abnormal: d < 0,
-      sub: `${shortDate(first.dateObj)} – ${shortDate(last.dateObj)}`
+      sub: `${when(first.dateObj)} – ${when(last.dateObj)}`
     }
   })()
 
@@ -394,6 +406,7 @@ export function buildSummaryReport(records, ctx) {
       points,
       bands: BANDS,
       xTicks,
+      xTitle,
       yTicks: [0, 20, 40, 60, 80, 100]
     },
     // Plain-language summary of the overall score across the selected sessions.
