@@ -24,11 +24,12 @@
         </div>
 
         <div class="topbar-actions">
-          <button class="btn-ghost" type="button" disabled title="Available in a future update">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Export
-          </button>
+          <ExportMenu :busy="exporting" @export="handleExport" />
         </div>
+      </div>
+      <p v-if="exportError" class="export-error" role="alert">{{ exportError }}</p>
+      <div ref="exportRoot">
+        <ExportReport :report="exportReportModel" />
       </div>
 
       <div class="disclaimer-banner">
@@ -157,11 +158,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, h } from 'vue'
+import { ref, computed, nextTick, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import { syncAccountScope } from '@/utils/accountScope'
 import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, buildRecommendations } from '@/utils/voiceInsights'
+import ExportMenu from '@/components/ExportMenu.vue'
+import ExportReport from '@/components/ExportReport.vue'
+import { exportReport } from '@/utils/exportReport'
+import { buildReport } from '@/utils/exportModel'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
 import AudioIcon from '@/assets/icons/audio.png'
 import WaterIcon from '@/assets/icons/water.png'
@@ -174,6 +179,7 @@ import CheckMarkIcon from '@/assets/icons/check_mark.png'
 const router = useRouter()
 const result = ref(null)
 const isMember = ref(false)
+const userId = ref(null) // shown on the exported report (guests have none)
 const isLoading = ref(true)
 
 onMounted(async () => {
@@ -184,6 +190,7 @@ onMounted(async () => {
 
     const { data } = await supabase.auth.getSession()
     isMember.value = !!data.session?.user
+    userId.value = data.session?.user?.id ?? null
 
     // Must run before the sessionStorage fallback read below — if the
     // signed-in account differs from whoever last left data on this
@@ -329,6 +336,55 @@ const voiceBaseline = computed(() => {
 const recommendations = computed(() =>
   buildRecommendations(quality.value, selfAssessment.value, voiceBaseline.value)
 )
+
+// ── Export (PDF / PNG) ───────────────────────────────────────────────
+// Guest and member both export only the recording on screen (UC-10 / Feature #7).
+const exportRoot = ref(null)
+const exporting = ref(false)
+const exportError = ref('')
+
+const exportReportModel = ref(null)
+
+async function handleExport(format) {
+  exportError.value = ''
+  exporting.value = true
+  try {
+    if (!quality.value) return
+    const iso = sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')
+    const q = quality.value
+    const report = buildReport(
+      [{
+        dateObj: iso ? new Date(iso) : new Date(),
+        risk: overallMeta.value.level,
+        resultLabel: overallMeta.value.badge,
+        subtitle: overallMeta.value.subtitle,
+        score: q.voice_quality?.voice_quality_score,
+        scores: {
+          clarity: q.clarity?.clarity_score,
+          stability: q.stability?.stability_score,
+          hoarseness: q.hoarseness_risk?.hoarseness_risk_score
+        },
+        metrics: metrics.value,
+        recommendations: recommendations.value,
+        features: result.value?.features || null,
+        assessment: selfAssessment.value,
+        // Guests have no baseline; ignore anything a previous account left in this browser.
+        baseline: isMember.value ? voiceBaseline.value : null
+      }],
+      { userId: isMember.value ? userId.value : null, generatedAt: new Date() }
+    )
+    exportReportModel.value = report
+    await nextTick() // let <ExportReport> render the page the PNG export captures
+    const stamp = new Date().toISOString().slice(0, 10)
+    await exportReport(exportRoot.value, { format, filename: `vocasense-result-${stamp}`, report })
+  } catch (err) {
+    console.error('Export failed', err)
+    exportError.value = 'Could not create the export. Please try again.'
+  } finally {
+    exporting.value = false
+    exportReportModel.value = null
+  }
+}
 
 // ── Icons ────────────────────────────────────────────────────────────
 const StatusIcon = (props) => {
@@ -575,6 +631,17 @@ const RecommendationIcon = (props) => {
   margin-left: auto;
 }
 
+/* Export trigger matches the Back button (same height, radius and type size). */
+.topbar-actions :deep(.export-trigger) {
+  padding: 10px 20px;
+  border-radius: 20px;
+  border-color: rgba(101, 148, 228, 0.35);
+  font-size: 14px;
+  font-weight: 500;
+  gap: 7px;
+}
+.topbar-actions :deep(.export-trigger svg) { width: 16px; height: 16px; }
+
 .btn-ghost {
   display: inline-flex;
   align-items: center;
@@ -601,6 +668,14 @@ const RecommendationIcon = (props) => {
 }
 
 .btn-ghost:disabled:hover { background: #fff; }
+
+.export-error {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #c83d3d;
+  text-align: right;
+}
 
 /* ── Disclaimer ── */
 .disclaimer-banner {
@@ -1140,8 +1215,18 @@ const RecommendationIcon = (props) => {
 }
 
 @media (max-width: 560px) {
-  .topbar { flex-direction: column; align-items: flex-start; }
-  .topbar-actions { width: 100%; }
+  /* Phone: Back and Export share the first row, the title sits underneath. */
+  .topbar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: 'back actions' 'title title';
+    align-items: center;
+    gap: 12px;
+  }
+  .btn-back { grid-area: back; justify-self: start; }
+  .topbar-actions { grid-area: actions; margin-left: 0; }
+  .topbar-center { grid-area: title; }
+  .btn-back, .topbar-actions :deep(.export-trigger) { padding: 9px 16px; font-size: 13px; }
   .btn-ghost { flex: 1; justify-content: center; }
   .status-card { padding: 24px 16px; }
   .status-subtitle { white-space: normal; }

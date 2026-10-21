@@ -22,18 +22,26 @@
       <template v-else-if="records.length">
       <header class="welcome-header">
         <h1 class="welcome-title">Welcome back, {{ displayName }}!</h1>
-        <p class="welcome-date">{{ formatDate(latestRecord.date) }}</p>
+        <p class="welcome-date">{{ formatDate(new Date()) }}</p>
       </header>
 
-      <section class="today-card">
-        <div class="today-icon" :class="riskIconBgClass(latestRecord.risk)">
-          <RiskIcon :risk="latestRecord.risk" />
+      <section class="card trend-card">
+        <h2 class="card-title">{{ trendTitle }}</h2>
+        <div v-if="trendStats" class="trend-row">
+          <span class="trend-risk" :class="'risk-text-' + trendStats.band">
+            <span class="trend-icon" :class="riskIconBgClass(trendStats.band)">
+              <RiskIcon :risk="trendStats.band" />
+            </span>
+            {{ trendRiskLabel }}
+          </span>
+          <span class="trend-divider" aria-hidden="true"></span>
+          <span class="trend-stats">
+            <span>Average score: <strong>{{ trendStats.avg }}</strong></span>
+            <span>Lowest: <strong>{{ trendStats.min }}</strong></span>
+            <span>Highest: <strong>{{ trendStats.max }}</strong></span>
+          </span>
         </div>
-        <div class="today-info">
-          <span class="today-label">{{ latestRecordLabel }}</span>
-          <span class="today-result" :class="'risk-text-' + latestRecord.risk">{{ latestRecord.resultLabel }}</span>
-          <span class="today-meta">{{ formatDate(latestRecord.date) }} &middot; {{ latestRecord.time }}</span>
-        </div>
+        <p v-else class="trend-empty">No sessions in this range yet.</p>
       </section>
 
       <section class="card score-card">
@@ -164,7 +172,7 @@
               </button>
               <div v-if="openDropdown === 'date'" class="dropdown-menu">
                 <button
-                  v-for="range in scoreRanges"
+                  v-for="range in recordDateRanges"
                   :key="range"
                   type="button"
                   class="dropdown-option"
@@ -203,11 +211,39 @@
               </div>
             </div>
 
-            <button type="button" class="btn-export" disabled title="Available in a future update">
+            <button type="button" class="btn-export" :class="{ active: exportMode }" :disabled="!filteredRecords.length" @click="toggleExportMode">
               <svg viewBox="0 0 24 24" fill="none" class="export-icon"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
               Export
             </button>
           </div>
+        </div>
+
+        <div v-if="exportMode" class="export-bar">
+          <button
+            type="button"
+            class="export-bar-selectall"
+            role="checkbox"
+            :aria-checked="allFilteredSelected ? 'true' : someSelected ? 'mixed' : 'false'"
+            @click="toggleSelectAll"
+          >
+            <span class="record-check" :class="{ checked: allFilteredSelected || someSelected }" aria-hidden="true">
+              <svg v-if="allFilteredSelected" viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg v-else-if="someSelected" viewBox="0 0 24 24" fill="none"><path d="M6 12h12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+            </span>
+            Select all
+          </button>
+          <span class="export-bar-count">{{ exportSelectedIds.size }} selected</span>
+          <ExportMenu
+            class="export-bar-menu"
+            label="Download"
+            :disabled="!exportSelectedIds.size"
+            :busy="exporting"
+            @export="handleExport"
+          />
+          <button type="button" class="export-bar-close" aria-label="Cancel export" title="Cancel export" @click="toggleExportMode">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <p v-if="exportError" class="export-bar-error" role="alert">{{ exportError }}</p>
         </div>
 
         <div class="record-body">
@@ -221,9 +257,12 @@
                 v-for="rec in visibleGroupItems(group)"
                 :key="rec.id"
                 class="record-item"
-                :class="{ selected: rec.id === selectedId }"
-                @click="openRecordDetail(rec.id)"
+                :class="{ selected: !exportMode && rec.id === selectedId, 'export-selected': exportMode && exportSelectedIds.has(rec.id) }"
+                @click="exportMode ? toggleExportSelect(rec.id) : openRecordDetail(rec.id)"
               >
+                <span v-if="exportMode" class="record-check" :class="{ checked: exportSelectedIds.has(rec.id) }" aria-hidden="true">
+                  <svg v-if="exportSelectedIds.has(rec.id)" viewBox="0 0 24 24" fill="none"><path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
                 <span class="record-dot" :class="'risk-dot-' + rec.risk"></span>
                 <span class="record-date-col">
                   <span class="record-date">{{ formatDate(rec.date) }}</span>
@@ -292,6 +331,8 @@
         </div>
       </section>
 
+      <ExportReport ref="exportReportEl" :report="exportReportModel" />
+
       </template>
 
       <div v-else-if="!recordsLoading" class="history-empty">
@@ -323,12 +364,16 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, h } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Navbar from '@/components/NavBar.vue'
 import { supabase } from '@/utils/supabase'
 import { backendApi } from '@/utils/backendApi'
 import { OVERALL_META, buildMetrics, buildRecommendations, qualityFromAnalysisRow } from '@/utils/voiceInsights'
+import ExportMenu from '@/components/ExportMenu.vue'
+import ExportReport from '@/components/ExportReport.vue'
+import { exportReport } from '@/utils/exportReport'
+import { buildReport } from '@/utils/exportModel'
 import CheckMarkIcon from '@/assets/icons/check_mark.png'
 import SparklesIcon from '@/assets/icons/Sparkles_1.png'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
@@ -343,7 +388,9 @@ const route = useRoute()
 const goHome = () => router.push('/')
 
 const displayName = ref('there')
+const userId = ref(null) // shown on exported reports
 const records = ref([])
+const baselineAnswers = ref(null) // member's one-time baseline profile (export context)
 const recordsLoading = ref(true)
 
 // Turns one `analysis` row (optionally with its linked recording_assessment
@@ -363,7 +410,12 @@ function mapAnalysisRow(row, baselineAnswers) {
     score: row.voice_quality_score,
     resultLabel: meta.badge,
     metrics: buildMetrics(quality),
-    recommendations: buildRecommendations(quality, assessmentRow?.answers, baselineAnswers)
+    recommendations: buildRecommendations(quality, assessmentRow?.answers, baselineAnswers),
+    // Extra detail only the export uses (acoustic table, recording context, chart lines).
+    scores: { clarity: row.clarity_score, stability: row.stability_score, hoarseness: row.hoarseness_score },
+    features: row.features || null,
+    assessment: assessmentRow?.answers || null,
+    scoringVersion: row.scoring_version || null
   }
 }
 
@@ -393,6 +445,7 @@ async function loadHistory() {
   const { data } = await supabase.auth.getSession()
   const user = data.session?.user
   displayName.value = user?.user_metadata?.username || user?.email || 'there'
+  userId.value = user?.id ?? null
 
   if (!user) {
     recordsLoading.value = false
@@ -411,6 +464,7 @@ async function loadHistory() {
       supabase.from('member_baseline').select('answers').eq('user_id', user.id).maybeSingle(),
     ])
 
+    baselineAnswers.value = baselineRow?.answers || null
     records.value = (analysisRows || []).map((row) => mapAnalysisRow(row, baselineRow?.answers))
     if (records.value.length) {
       selectedId.value = records.value.reduce((a, b) => (b.date > a.date ? b : a)).id
@@ -495,19 +549,10 @@ const latestRecord = computed(() =>
     : null
 )
 
-// SRS-117 still requires the most recent session to drive this card no
-// matter when it happened — this only changes the CARD'S LABEL, not which
-// record is shown, so "Today's Result" doesn't mislabel a session from days
-// ago as if it were recorded today.
-const latestRecordLabel = computed(() => {
-  if (!latestRecord.value) return "Today's Result"
-  const today = new Date()
-  const isToday = latestRecord.value.date.toDateString() === today.toDateString()
-  return isToday ? "Today's Result" : 'Latest Result'
-})
-
 // ── Voice Health Score card ─────────────────────────────────────────
-const scoreRanges = ['7 Days', '30 Days', 'All Time']
+// Voice Health Score only offers fixed windows; the Record List filter also offers All Time.
+const scoreRanges = ['7 Days', '30 Days']
+const recordDateRanges = ['7 Days', '30 Days', 'All Time']
 const selectedScoreRange = ref('7 Days')
 
 // "N Days" means exactly N calendar days ending today — today plus the
@@ -532,6 +577,28 @@ const scoreFiltered = computed(() =>
 function riskCount(risk) {
   return scoreFiltered.value.filter((r) => r.risk === risk).length
 }
+
+// ── Trends summary (card above the chart) ───────────────────────────
+// Follows the range pills below it. Average / min / max are over every
+// session in the range (not the per-day chart points), and the risk level is
+// the average score's colour band, so it always agrees with the chart colours.
+const trendTitle = computed(() =>
+  `${selectedScoreRange.value.replace('Days', 'Day')} trends summary`
+)
+const trendStats = computed(() => {
+  const scores = scoreFiltered.value.map((r) => Number(r.score)).filter(Number.isFinite)
+  if (!scores.length) return null
+  const avg = scores.reduce((sum, v) => sum + v, 0) / scores.length
+  return {
+    avg: avg.toFixed(1),
+    min: Math.min(...scores).toFixed(1),
+    max: Math.max(...scores).toFixed(1),
+    band: scoreBand(avg)
+  }
+})
+const trendRiskLabel = computed(() =>
+  trendStats.value ? { low: 'Low risk', moderate: 'Moderate risk', high: 'High risk' }[trendStats.value.band] : ''
+)
 
 // Kept relatively wide/flat (vs. a square-ish ratio) so the line still reads
 // well once the card stretches on a wide screen — see CSS aspect-ratio below,
@@ -685,7 +752,7 @@ watch(selectedScoreRange, () => { activeTooltipIndex.value = null })
 // first and last sessions — the chart's own edges — are always labeled)
 // rather than a fixed calendar grid — a tick's date always comes from a real
 // point, so it lands exactly under it. 7 Days keeps up to 5 labels (it's rarely
-// more than a handful of sessions); 30 Days and All Time cap at 2
+// more than a handful of sessions); 30 Days caps at 2
 // (start/end only) since hovering or tapping any point already surfaces its
 // exact date, so a busier axis there would just be clutter.
 function maxTicksFor(range) {
@@ -858,6 +925,93 @@ const selectedRecord = computed(
   () => filteredRecords.value.find((r) => r.id === selectedId.value) || filteredRecords.value[0] || null
 )
 
+// ── Export (PDF / PNG) ───────────────────────────────────────────────
+// Feature #7: the member ticks specific past records, then downloads them.
+// One selected record -> the detailed single-session report; two or more -> an
+// analysis summary (trend chart, summary, baseline) + comparison table.
+const exportMode = ref(false)
+const exportSelectedIds = ref(new Set())
+const exporting = ref(false)
+const exportError = ref('')
+const exportReportEl = ref(null)
+
+function toggleExportMode() {
+  exportMode.value = !exportMode.value
+  exportSelectedIds.value = new Set()
+  exportError.value = ''
+}
+function toggleExportSelect(id) {
+  const next = new Set(exportSelectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  exportSelectedIds.value = next
+}
+const allFilteredSelected = computed(
+  () => filteredRecords.value.length > 0 && filteredRecords.value.every((r) => exportSelectedIds.value.has(r.id))
+)
+const someSelected = computed(() => exportSelectedIds.value.size > 0 && !allFilteredSelected.value)
+function toggleSelectAll() {
+  exportSelectedIds.value = allFilteredSelected.value ? new Set() : new Set(filteredRecords.value.map((r) => r.id))
+}
+// A record hidden by a filter change must not stay silently selected.
+watch(filteredRecords, (list) => {
+  if (!exportSelectedIds.value.size) return
+  const visible = new Set(list.map((r) => r.id))
+  exportSelectedIds.value = new Set([...exportSelectedIds.value].filter((id) => visible.has(id)))
+})
+
+const exportReportModel = ref(null)
+
+const exportFilterLabel = computed(() =>
+  [dateFilter.value !== 'All Time' ? dateFilter.value : null, riskFilter.value !== 'all' ? riskFilterLabel.value : null]
+    .filter(Boolean)
+    .join(' · ')
+)
+
+// One session keeps the detailed layout; several become a summary + comparison
+// table (see utils/exportModel.js).
+async function handleExport(format) {
+  exportError.value = ''
+  exporting.value = true
+  try {
+    const selected = filteredRecords.value.filter((r) => exportSelectedIds.value.has(r.id))
+    if (!selected.length) return
+    const report = buildReport(
+      selected.map((r) => ({
+        id: r.id,
+        dateObj: r.date,
+        risk: r.risk,
+        resultLabel: r.resultLabel,
+        score: r.score,
+        scores: r.scores,
+        metrics: r.metrics,
+        recommendations: r.recommendations,
+        features: r.features,
+        assessment: r.assessment,
+        scoringVersion: r.scoringVersion
+      })),
+      {
+        userId: userId.value,
+        generatedAt: new Date(),
+        baseline: baselineAnswers.value,
+        filterLabel: exportFilterLabel.value
+      }
+    )
+    exportReportModel.value = report
+    await nextTick() // let <ExportReport> render the pages the PNG export captures
+    const name = selected.length === 1
+      ? `vocasense-record-${selected[0].date.toISOString().slice(0, 10)}`
+      : `vocasense-records-${selected.length}`
+    await exportReport(exportReportEl.value.$el, { format, filename: name, report })
+  } catch (err) {
+    console.error('Export failed', err)
+    exportError.value = 'Could not create the export. Please try again.'
+  } finally {
+    exporting.value = false
+    exportReportModel.value = null
+  }
+}
+
 function riskIconBgClass(risk) {
   return risk === 'low' ? 'status-icon-healthy' : 'risk-bg-' + risk
 }
@@ -976,7 +1130,72 @@ function formatDate(date) {
   margin: 0;
 }
 
-/* ── Today's Result ── */
+/* ── Trends summary ── */
+.trend-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.trend-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.trend-risk {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.trend-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.trend-icon :deep(svg),
+.trend-icon :deep(.glyph-img) {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+}
+
+.trend-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(101, 148, 228, 0.35);
+}
+
+.trend-stats {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7690;
+}
+
+.trend-stats strong {
+  color: #1a1a2e;
+  font-weight: 700;
+}
+
+.trend-empty {
+  margin: 0;
+  font-size: 13px;
+  color: #8b96ad;
+}
+
+/* ── Today's Result (card removed — icon/label styles are still shared) ── */
 .today-card {
   display: flex;
   align-items: center;
@@ -1057,7 +1276,7 @@ function formatDate(date) {
   position: absolute;
   top: 4px;
   left: 4px;
-  width: calc((100% - 8px) / 3);
+  width: calc((100% - 8px) / 2);
   height: calc(100% - 8px);
   background: #fff;
   border-radius: 16px;
@@ -1385,7 +1604,8 @@ function formatDate(date) {
   font-weight: 600;
 }
 
-.stat-total { background: linear-gradient(135deg, #ffffff 3%, #f4f8ff 66%, #e5eeff 100%); }
+/* Total sessions is a flat tile (solid tint, no gradient or shadow); the risk tiles keep their gradients. */
+.stat-total { background: #e8f0ff; border-color: #d3e1fb; box-shadow: none; }
 .stat-total .stat-number { color: #3d6fd1; }
 .stat-total .stat-label { color: #5778b2; }
 
@@ -1416,9 +1636,8 @@ function formatDate(date) {
   margin-left: auto;
 }
 
-/* Matches .dropdown-trigger's shape/border exactly so it reads as one of the
-   same set of controls; always disabled, so no separate :disabled override
-   or "Coming soon" badge — the dimmed look plus the hover tooltip says enough. */
+/* Matches .dropdown-trigger's shape/border so it reads as one of the same
+   set of controls. Toggles record-selection mode (see .export-bar). */
 .btn-export {
   margin-left: auto;
   display: inline-flex;
@@ -1431,15 +1650,115 @@ function formatDate(date) {
   font-family: 'Poppins', sans-serif;
   font-size: 12.5px;
   font-weight: 600;
-  color: #8a94a8;
-  opacity: 0.6;
-  cursor: not-allowed;
+  color: #6594e4;
+  cursor: pointer;
 }
+
+.btn-export:hover:not(:disabled) { background: #f4f7ff; }
+.btn-export.active { background: #eaf1ff; color: #3d6fd1; }
+.btn-export:disabled { opacity: 0.6; cursor: not-allowed; color: #8a94a8; }
 
 .export-icon {
   width: 14px;
   height: 14px;
 }
+
+.export-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: #f4f7ff;
+  border: 1px solid rgba(101, 148, 228, 0.18);
+  border-radius: 14px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+}
+
+.export-bar-count { font-size: 12.5px; font-weight: 700; color: #3d6fd1; }
+
+.export-bar-selectall {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  border-radius: 8px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #3d6fd1;
+  cursor: pointer;
+}
+.export-bar-selectall:hover { background: rgba(101, 148, 228, 0.12); }
+.export-bar-selectall:focus-visible { outline: 2px solid #6594e4; outline-offset: 2px; }
+
+.export-bar-menu { margin-left: auto; }
+
+/* Phones: the 7 / 30 Days switch wraps onto its own line under the title; let it span the
+   full card width (two equal halves) instead of floating as a small pill on the right. */
+@media (max-width: 520px) {
+  .score-card .pill-group { width: 100%; margin-left: 0; }
+  .score-card .pill-btn { padding: 9px 10px; font-size: 12.5px; text-align: center; }
+}
+
+/* Phones: selection controls + close (X) share the first row; Download takes the full
+   width of the second row, instead of wrapping to a lone right-aligned button. */
+@media (max-width: 560px) {
+  .export-bar { gap: 10px 12px; }
+  .export-bar-close { order: 2; margin-left: auto; }
+  .export-bar-menu { order: 3; flex-basis: 100%; margin-left: 0; }
+  .export-bar-menu :deep(.export-trigger) { width: 100%; justify-content: center; padding: 10px 14px; }
+  .export-bar-error { order: 4; }
+  .export-bar-menu :deep(.export-options) { left: 0; right: 0; width: auto; max-width: none; }
+}
+
+/* Close (X) sits right next to Download. Neutral at rest so it stays quiet; turns red on
+   hover/focus to signal "leave this mode" — not red by default, since nothing is deleted. */
+.export-bar-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #cfd7e8;
+  border-radius: 50%;
+  background: #fff;
+  color: #4a5470;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.export-bar-close svg { width: 16px; height: 16px; }
+.export-bar-close:hover,
+.export-bar-close:focus-visible { background: #fdecea; border-color: #f0b8b0; color: #c83d3d; outline: none; }
+
+.export-bar-error {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #c83d3d;
+}
+
+.record-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1.5px solid rgba(101, 148, 228, 0.5);
+  background: #fff;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.record-check.checked { background: #6594e4; border-color: #6594e4; }
+.record-check svg { width: 11px; height: 11px; }
+
+.record-item.export-selected { background: #eaf1ff; }
 
 .dropdown {
   position: relative;

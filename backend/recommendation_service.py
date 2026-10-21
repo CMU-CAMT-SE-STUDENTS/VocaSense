@@ -600,7 +600,7 @@ class SupabaseRestRepository:
                 "select": (
                     "id,created_at,voice_quality_score,voice_condition,hoarseness_score,"
                     "hoarseness_condition,stability_score,stability_condition,clarity_score,"
-                    "clarity_condition,recording_assessment(answers)"
+                    "clarity_condition,features,scoring_version,recording_assessment(answers)"
                 ),
                 "order": "created_at.desc",
             },
