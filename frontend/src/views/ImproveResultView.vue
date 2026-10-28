@@ -41,7 +41,16 @@
             </span>
           </div>
 
-          <template v-if="!hasBaseline">
+          <!-- UC-18 4E: could not retrieve the saved baseline — error + retry,
+               and no questionnaire is offered as a "new" baseline. -->
+          <template v-if="baselineLoadError">
+            <p class="save-error-banner" role="alert">Your baseline information could not be retrieved. Check your connection and try again.</p>
+            <button class="btn-primary" type="button" :disabled="baselineRetrying" @click="retryLoadBaseline">
+              {{ baselineRetrying ? 'Retrying...' : 'Try Again' }}
+            </button>
+          </template>
+
+          <template v-else-if="!hasBaseline">
             <h3 class="why-title">Why this helps</h3>
             <ul class="why-list">
               <li>
@@ -129,7 +138,13 @@
             </div>
             <strong class="mini-card-title">Set Your Baseline</strong>
             <p class="mini-card-desc">What counts as a normal voice differs per person. Optional, but improves accuracy.</p>
-            <button v-if="hasBaseline" class="btn-outline sm" type="button" @click="openBaseline">
+            <template v-if="baselineLoadError">
+              <p class="save-error-banner" role="alert">Your baseline information could not be retrieved.</p>
+              <button class="btn-outline sm" type="button" :disabled="baselineRetrying" @click="retryLoadBaseline">
+                {{ baselineRetrying ? 'Retrying...' : 'Try Again' }}
+              </button>
+            </template>
+            <button v-else-if="hasBaseline" class="btn-outline sm" type="button" @click="openBaseline">
               Edit your baseline <span aria-hidden="true">&rarr;</span>
             </button>
             <!-- Outline, not the solid gradient About This Recording uses —
@@ -255,7 +270,7 @@
                   </div>
 
                   <button class="btn-primary" type="button" @click="viewResult">
-                    See my update result <span aria-hidden="true">&rarr;</span>
+                    See my updated result <span aria-hidden="true">&rarr;</span>
                   </button>
                   <button
                     v-if="isMember && !hasBaseline"
@@ -682,6 +697,46 @@ function toPlain(obj) {
   return JSON.parse(JSON.stringify(obj))
 }
 
+// UC-18 step 4 / 4E: fetch the member's saved baseline. A failed lookup sets
+// baselineLoadError (error message + Retry on the card) instead of letting
+// the member open an empty questionnaire as if no baseline existed.
+const baselineLoadError = ref(false)
+const baselineRetrying = ref(false)
+async function loadMemberBaseline() {
+  baselineLoadError.value = false
+  try {
+    const { data, error } = await supabase
+      .from('member_baseline')
+      .select('answers')
+      .eq('user_id', userId.value)
+      .maybeSingle()
+    if (error) throw error
+    if (data?.answers) {
+      Object.assign(baselineAnswers, data.answers)
+      hasBaseline.value = true
+      sharedHasBaseline.value = true
+      saveJSON(LS_BASELINE_KEY, baselineAnswers)
+    } else {
+      hasBaseline.value = false
+      sharedHasBaseline.value = false
+      try { localStorage.removeItem(LS_BASELINE_KEY) } catch { /* storage unavailable */ }
+    }
+  } catch (err) {
+    console.error('Failed to load baseline', err)
+    baselineLoadError.value = true
+  }
+}
+
+async function retryLoadBaseline() {
+  if (baselineRetrying.value) return
+  baselineRetrying.value = true
+  try {
+    await loadMemberBaseline()
+  } finally {
+    baselineRetrying.value = false
+  }
+}
+
 watch(step, (next, prev) => {
   const toNum = (v) => (v === 'complete' ? 8 : v)
   direction.value = toNum(next) >= toNum(prev) ? 1 : -1
@@ -693,11 +748,17 @@ onMounted(async () => {
   userId.value = data.session?.user?.id ?? null
   syncAccountScope(userId.value)
 
-  const savedBaseline = loadJSON(LS_BASELINE_KEY)
-  if (savedBaseline) {
-    Object.assign(baselineAnswers, savedBaseline)
-    hasBaseline.value = true
-    sharedHasBaseline.value = true
+  // UC-18 4E: for a member the database is the only source of truth for
+  // "does a baseline exist" — the browser copy must never stand in for it, or
+  // a failed lookup would silently open an empty questionnaire as a new
+  // baseline. Only the (non-member) local fallback reads the browser copy.
+  if (!userId.value) {
+    const savedBaseline = loadJSON(LS_BASELINE_KEY)
+    if (savedBaseline) {
+      Object.assign(baselineAnswers, savedBaseline)
+      hasBaseline.value = true
+      sharedHasBaseline.value = true
+    }
   }
   const savedAssessment = loadJSON(assessmentStorageKey(recordingKey.value))
   if (savedAssessment) {
@@ -712,19 +773,7 @@ onMounted(async () => {
   // per-analysis (needs analysisId) and is fetched regardless of sign-in
   // status, since a guest's recording gets an analysis row too.
   const remoteLoads = []
-  if (userId.value) {
-    remoteLoads.push(
-      supabase.from('member_baseline').select('answers').eq('user_id', userId.value).maybeSingle()
-        .then(({ data }) => {
-          if (data?.answers) {
-            Object.assign(baselineAnswers, data.answers)
-            hasBaseline.value = true
-            sharedHasBaseline.value = true
-            saveJSON(LS_BASELINE_KEY, baselineAnswers)
-          }
-        })
-    )
-  }
+  if (userId.value) remoteLoads.push(loadMemberBaseline())
   if (analysisId.value) {
     remoteLoads.push(
       recordingAssessmentClient().from('recording_assessment').select('answers').eq('analysis_id', analysisId.value).maybeSingle()
@@ -791,6 +840,9 @@ function openAssessment() {
 
 function openBaseline() {
   showResultWarning.value = false
+  // UC-18 4E: never open the questionnaire while we cannot tell whether a
+  // saved baseline exists.
+  if (baselineLoadError.value) return
   router.push({ path: '/improve-result', query: { ...entryQuery(), form: 'baseline' } })
 }
 
@@ -801,9 +853,8 @@ function closeForm() {
 // SRS-162 (UC-17): from the completion screen, "See my updated result"
 // goes through the Analyzing step (UpdatingResultView) rather than
 // straight back to the Result Dashboard — that page is what actually
-// combines the submitted answers with the acoustic analysis and (once
-// wired up) calls the recommendation-generation service before landing on
-// the Result Dashboard.
+// asks the backend to regenerate the recommendation from the submitted
+// answers and the acoustic analysis before landing on the Result Dashboard.
 function viewResult() {
   router.push('/updating-result')
 }
@@ -948,26 +999,6 @@ function recordingAssessmentClient() {
   const guestToken = activeGuestToken()
   if (guestToken) return createGuestAssessmentClient(guestToken)
   throw new Error('Your guest session has expired. Please record a new voice sample.')
-}
-
-async function regenerateRecommendation(id) {
-  const { data } = await supabase.auth.getSession()
-  const headers = {}
-  if (data.session?.access_token) headers.Authorization = `Bearer ${data.session.access_token}`
-  else {
-    const guestToken = activeGuestToken()
-    if (!guestToken) throw new Error('Your guest session has expired. Please record a new voice sample.')
-    headers['X-Guest-Token'] = guestToken
-  }
-
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
-  const response = await fetch(
-    `${apiBaseUrl}/api/analyses/${id}/recommendations/generate?regenerate=true`,
-    { method: 'POST', headers }
-  )
-  const payload = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(payload?.detail || 'Could not update recommendations.')
-  return payload
 }
 
 // UC-16 precondition: "About This Recording" only makes sense once a
@@ -1213,7 +1244,6 @@ async function submitAssessment() {
         { onConflict: 'analysis_id' }
       )
       if (error) throw error
-      await regenerateRecommendation(analysisId.value)
     }
     assessmentDoneForRecording.value = true
     step.value = 'complete'
@@ -1459,7 +1489,8 @@ const currentBaselineQuestions = computed(() => questionsOf(currentBaselineSecti
 function isBaselineAnswered(q) {
   const v = baselineAnswers[q.key]
   if (q.type === 'checkbox-group') return v.length > 0
-  return v !== '' && v !== null && v !== undefined
+  if (typeof v === 'string') return v.trim() !== ''
+  return v !== null && v !== undefined
 }
 
 const isBaselineSectionComplete = computed(() =>
@@ -1509,7 +1540,6 @@ async function baselineNext() {
   baselineSaveError.value = false
   isSavingBaseline.value = true
   try {
-    saveJSON(LS_BASELINE_KEY, baselineAnswers)
     if (userId.value) {
       // Supabase doesn't throw on a query error by default — it resolves
       // with { error } set, silently, so this has to check it explicitly.
@@ -1523,6 +1553,10 @@ async function baselineNext() {
       )
       if (error) throw error
     }
+    // Written only after the database accepted it (UC-18 10E / SRS-182): a
+    // failed save must not leave the unsaved answers behind as the "saved"
+    // baseline in this browser.
+    saveJSON(LS_BASELINE_KEY, baselineAnswers)
     hasBaseline.value = true
     sharedHasBaseline.value = true
     baselineStep.value = 'complete'

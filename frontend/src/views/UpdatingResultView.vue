@@ -51,30 +51,21 @@
 <script setup>
 // UC-17: View Updated Recommendations (SRS-162 to SRS-173).
 //
-// This page is the "Analyzing page" SRS-162 requires between clicking "See
-// my updated result" and landing back on the Result Dashboard — it exists
-// so the wait for a real recommendation-generation backend call has the
-// same honest step-by-step feedback as the voice-analysis Analyzing page
-// (AnalysisView.vue), instead of the generic "Loading your result..."
-// spinner on ResultView.vue (which is only meant for the quick session
-// check on a plain page visit, not a multi-step backend pipeline).
-//
-// The backend side of SRS-162/165/166/170 (send assessment + baseline +
-// acoustic-analysis data to a recommendation generation service, get new
-// recommendations back) does not exist yet — see the TODO in
-// requestUpdatedRecommendations() below. Until it does, this simulates the
-// pipeline with timed steps so the page (including its error/retry path,
-// SRS-172/173) is testable end to end right now; swapping in the real call
-// later should not require touching the step/error UI at all.
+// The "Analyzing" step between "See my updated result" and the Result
+// Dashboard. Answers were already saved by ImproveResultView; this page asks
+// the backend to regenerate the recommendation for the current analysis
+// (POST /api/analyses/{id}/recommendations/generate?regenerate=true), keeps
+// the result for ResultView, and offers Try Again on failure without
+// repeating the assessment.
 import { ref, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
+import { supabase } from '@/utils/supabase'
 
 import saveIcon from '@/assets/icons/check_mark.png'
 import brainIcon from '@/assets/icons/Brain.png'
 import searchIcon from '@/assets/icons/Search.png'
 
 const router = useRouter()
-const route = useRoute()
 
 const updateError = ref('')
 
@@ -84,7 +75,8 @@ const steps = ref([
   { label: 'Generating updated recommendations',      icon: searchIcon, progress: 0, status: 'pending' },
 ])
 
-const STEP_DURATIONS = [500, 700, 900]
+const STEP_DURATIONS = [400, 500]
+const UPDATED_REC_KEY = 'vocasense:updatedRecommendation'
 
 function animateStep(step, duration) {
   return new Promise((resolve) => {
@@ -107,28 +99,46 @@ function animateStep(step, duration) {
   })
 }
 
-// TODO(backend): replace this stub with the real recommendation-generation
-// call once the service exists. Expected shape per SRS-162/165/166:
-//   POST /api/recommendations/update
-//   body: { assessmentAnswers, baseline (if Member has one), voiceAnalysis }
-//   -> { recommendations: [...], riskLevel: '...' }
-// SRS-167 requires validating the response before storing/displaying it,
-// and SRS-168/169 requires saving it to only the current voice analysis
-// record — do that validation + save here, in place of the fake delay.
-//
-// `?simulateError=1` in the URL forces the rejection path below, so the
-// error state and "Try Again" retry button (SRS-172/173) can be tested
-// without a real backend being wired up yet.
-function requestUpdatedRecommendations() {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      if (route.query.simulateError === '1') {
-        reject(new Error('Could not reach the recommendation service. Please try again.'))
-      } else {
-        resolve({ ok: true })
-      }
-    }, STEP_DURATIONS[2])
-  })
+function activeGuestToken() {
+  try {
+    const guest = JSON.parse(sessionStorage.getItem('vocasense:guestAnalysisSession') || 'null')
+    return guest?.token && Date.parse(guest.expiresAt) > Date.now() ? guest.token : null
+  } catch {
+    return null
+  }
+}
+
+async function requestUpdatedRecommendations() {
+  const analysisId = sessionStorage.getItem('vocasense:lastAnalysisId')
+  if (!analysisId) throw new Error('No saved analysis was found. Please record a new voice sample.')
+
+  const { data } = await supabase.auth.getSession()
+  const headers = {}
+  if (data.session?.access_token) headers.Authorization = `Bearer ${data.session.access_token}`
+  else {
+    const guestToken = activeGuestToken()
+    if (!guestToken) throw new Error('Your guest session has expired. Please record a new voice sample.')
+    headers['X-Guest-Token'] = guestToken
+  }
+
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  let response
+  try {
+    response = await fetch(
+      `${apiBaseUrl}/api/analyses/${analysisId}/recommendations/generate?regenerate=true`,
+      { method: 'POST', headers }
+    )
+  } catch {
+    throw new Error('Could not reach the recommendation service. Please try again.')
+  }
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || !Array.isArray(payload?.recommendations)) {
+    throw new Error(payload?.detail || 'Could not update recommendations. Please try again.')
+  }
+  try {
+    sessionStorage.setItem(UPDATED_REC_KEY, JSON.stringify({ analysisId: String(analysisId), recommendations: payload.recommendations }))
+  } catch { /* storage unavailable: ResultView falls back to local tips */ }
+  return payload
 }
 
 async function run() {
@@ -142,14 +152,10 @@ async function run() {
     // honestly rather than re-saving, so it resolves quickly by design.
     await animateStep(steps.value[0], STEP_DURATIONS[0])
 
-    // Step 2: combine assessment + baseline + this recording's acoustic
-    // analysis (SRS-164/165) — currently computed client-side in
-    // ResultView.vue's `recommendations`, so there's nothing to await yet;
-    // once that logic moves server-side this step should await the real
-    // "gather inputs" call instead of animating on a timer.
+    // Step 2: brief review of the stored analysis before generating.
     await animateStep(steps.value[1], STEP_DURATIONS[1])
 
-    // Step 3: the actual recommendation-generation call (stubbed above).
+    // Step 3: the real recommendation-generation call.
     steps.value[2].status = 'active'
     steps.value[2].progress = 10
     await requestUpdatedRecommendations()

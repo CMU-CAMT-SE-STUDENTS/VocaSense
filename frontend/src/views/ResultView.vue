@@ -333,7 +333,28 @@ const voiceBaseline = computed(() => {
 // answers and the member's baseline — those can surface tips the acoustic
 // analysis alone wouldn't catch, e.g. a healthy-sounding recording where the
 // user reported severe symptoms.
+// After UC-17 ("See my updated result") the backend-generated recommendation
+// for this analysis is shown; otherwise the local derivation above is used.
+const REC_KIND_BY_CATEGORY = { hydration: 'water', rest: 'rest', warmup: 'warmup', sleep: 'sleep', specialist: 'specialist' }
+function updatedBackendRecommendations() {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem('vocasense:updatedRecommendation') || 'null')
+    const currentId = sessionStorage.getItem('vocasense:lastAnalysisId')
+    if (!stored || !currentId || stored.analysisId !== currentId || !Array.isArray(stored.recommendations)) return null
+    const items = stored.recommendations
+      .filter((r) => r && (r.action || r.title))
+      .map((r) => ({
+        kind: REC_KIND_BY_CATEGORY[r.category] || 'voice',
+        text: r.action || r.title,
+        priority: r.priority === 'high' ? 'high' : 'moderate'
+      }))
+    return items.length ? items : null
+  } catch {
+    return null
+  }
+}
 const recommendations = computed(() =>
+  updatedBackendRecommendations() ||
   buildRecommendations(quality.value, selfAssessment.value, voiceBaseline.value)
 )
 
