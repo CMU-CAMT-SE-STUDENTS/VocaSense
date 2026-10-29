@@ -103,6 +103,7 @@
               <p class="card-subtitle">Follow these tips to improve your vocal health</p>
             </div>
           </div>
+          <p v-if="!recommendations.length" class="card-subtitle">Recommendations are not available right now.</p>
           <div class="rec-list">
             <div v-for="rec in recommendations" :key="rec.text" class="rec-item" :class="'priority-bg-' + rec.priority">
               <span class="rec-icon" :class="'priority-icon-' + rec.priority">
@@ -162,7 +163,7 @@ import { ref, computed, nextTick, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import { syncAccountScope } from '@/utils/accountScope'
-import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, buildRecommendations } from '@/utils/voiceInsights'
+import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, backendRecommendationItems } from '@/utils/voiceInsights'
 import ExportMenu from '@/components/ExportMenu.vue'
 import ExportReport from '@/components/ExportReport.vue'
 import { exportReport } from '@/utils/exportReport'
@@ -333,29 +334,22 @@ const voiceBaseline = computed(() => {
 // answers and the member's baseline — those can surface tips the acoustic
 // analysis alone wouldn't catch, e.g. a healthy-sounding recording where the
 // user reported severe symptoms.
-// After UC-17 ("See my updated result") the backend-generated recommendation
-// for this analysis is shown; otherwise the local derivation above is used.
-const REC_KIND_BY_CATEGORY = { hydration: 'water', rest: 'rest', warmup: 'warmup', sleep: 'sleep', specialist: 'specialist' }
+// Recommendations come from the backend: the one regenerated after UC-17
+// ("See my updated result"), otherwise the one returned with the analysis.
 function updatedBackendRecommendations() {
   try {
     const stored = JSON.parse(sessionStorage.getItem('vocasense:updatedRecommendation') || 'null')
     const currentId = sessionStorage.getItem('vocasense:lastAnalysisId')
-    if (!stored || !currentId || stored.analysisId !== currentId || !Array.isArray(stored.recommendations)) return null
-    const items = stored.recommendations
-      .filter((r) => r && (r.action || r.title))
-      .map((r) => ({
-        kind: REC_KIND_BY_CATEGORY[r.category] || 'voice',
-        text: r.action || r.title,
-        priority: r.priority === 'high' ? 'high' : 'moderate'
-      }))
-    return items.length ? items : null
-  } catch {
-    return null
-  }
+    if (stored && currentId && stored.analysisId === currentId) {
+      return backendRecommendationItems(stored.recommendations)
+    }
+  } catch { /* fall through */ }
+  return null
 }
 const recommendations = computed(() =>
   updatedBackendRecommendations() ||
-  buildRecommendations(quality.value, selfAssessment.value, voiceBaseline.value)
+  backendRecommendationItems(result.value?.recommendation?.recommendations) ||
+  []
 )
 
 // ── Export (PDF / PNG) ───────────────────────────────────────────────

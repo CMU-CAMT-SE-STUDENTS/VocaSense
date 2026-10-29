@@ -10,6 +10,7 @@ import ImproveResultView from '../views/ImproveResultView.vue'
 import HistoryView from '../views/HistoryView.vue'
 import ResultView from '../views/ResultView.vue'
 import UpdatingResultView from '../views/UpdatingResultView.vue'
+import { supabase } from '@/utils/supabase'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -79,11 +80,28 @@ const router = createRouter({
 // so it requires one to exist. Scoped to ?form=assessment only — the bare
 // page and ?form=baseline ("Set Your Baseline") stay reachable with no
 // recording at all, since a member can set their baseline any time.
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   if (to.path === '/improve-result' && to.query.form === 'assessment') {
     if (!sessionStorage.getItem('vocasense:lastVoiceAnalysisAt')) {
       return { path: '/recording', query: { reason: 'needs-recording' } }
     }
+  }
+
+  // UC-12 / SRS-115: the History page is for logged-in members only, and
+  // UC-18 / SRS-175: so is the baseline questionnaire. Visitors who are not
+  // logged in are redirected to the Login page.
+  const needsMember =
+    to.path === '/history' ||
+    (to.path === '/improve-result' && to.query.form === 'baseline')
+  if (needsMember) {
+    let loggedIn = false
+    try {
+      const { data } = await supabase.auth.getSession()
+      loggedIn = !!data.session?.user
+    } catch {
+      loggedIn = false
+    }
+    if (!loggedIn) return { path: '/login' }
   }
 })
 

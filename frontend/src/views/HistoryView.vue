@@ -312,6 +312,7 @@
               </div>
 
               <h4 class="rec-title">Recommendations</h4>
+              <p v-if="!selectedRecord.recommendations.length" class="rec-empty">Recommendations are not available for this record.</p>
               <div class="rec-list">
                 <div v-for="rec in selectedRecord.recommendations" :key="rec.text" class="rec-item" :class="'priority-bg-' + rec.priority">
                   <span class="rec-icon" :class="'priority-icon-' + rec.priority">
@@ -369,7 +370,7 @@ import { useRoute, useRouter } from 'vue-router'
 import Navbar from '@/components/NavBar.vue'
 import { supabase } from '@/utils/supabase'
 import { backendApi } from '@/utils/backendApi'
-import { OVERALL_META, buildMetrics, buildRecommendations, qualityFromAnalysisRow } from '@/utils/voiceInsights'
+import { OVERALL_META, buildMetrics, backendRecommendationItems, qualityFromAnalysisRow } from '@/utils/voiceInsights'
 import ExportMenu from '@/components/ExportMenu.vue'
 import ExportReport from '@/components/ExportReport.vue'
 import { exportReport } from '@/utils/exportReport'
@@ -410,7 +411,8 @@ function mapAnalysisRow(row, baselineAnswers) {
     score: row.voice_quality_score,
     resultLabel: meta.badge,
     metrics: buildMetrics(quality),
-    recommendations: buildRecommendations(quality, assessmentRow?.answers, baselineAnswers),
+    // Recommendations generated and stored by the backend.
+    recommendations: backendRecommendationItems(row.recommendation_items) || [],
     // Extra detail only the export uses (acoustic table, recording context, chart lines).
     scores: { clarity: row.clarity_score, stability: row.stability_score, hoarseness: row.hoarseness_score },
     features: row.features || null,
@@ -512,7 +514,7 @@ const MetricIcon = (props) => {
 }
 
 // Kept in sync with ResultView.vue's RecommendationIcon (same `kind` set
-// comes out of buildRecommendations for both pages) — missing 'sleep',
+// comes out of backendRecommendationItems for both pages) — missing 'sleep',
 // 'specialist', 'substance' here silently fell through to a broken
 // <img src="undefined"> for those kinds. Keep any new kind added to one
 // file's version mirrored here too.
@@ -560,8 +562,13 @@ const selectedScoreRange = ref('7 Days')
 function withinRange(record, range, referenceDate) {
   if (range === 'All Time') return true
   const days = range === '7 Days' ? 6 : 29
-  const diff = (referenceDate - record.date) / (1000 * 60 * 60 * 24)
-  return diff >= 0 && diff <= days
+  // Calendar-day window: today plus the N-1 whole days before it, counted
+  // from the start of each day (not 24-hour blocks back from "now"), so a
+  // record from the morning of the earliest day still counts.
+  const windowStart = new Date(referenceDate)
+  windowStart.setHours(0, 0, 0, 0)
+  windowStart.setDate(windowStart.getDate() - days)
+  return record.date >= windowStart && record.date <= referenceDate
 }
 
 const scoreFiltered = computed(() =>
