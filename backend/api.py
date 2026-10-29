@@ -184,6 +184,7 @@ def put_recording_assessment(
 def generate_recommendation(
     analysis_id: int,
     regenerate: bool = False,
+    use_current_baseline: bool = False,
     authorization: str | None = Header(default=None),
     x_guest_token: str | None = Header(default=None, alias="X-Guest-Token"),
 ):
@@ -191,7 +192,12 @@ def generate_recommendation(
     try:
         service = get_recommendation_service()
         actor = resolve_actor(service, authorization, x_guest_token)
-        return service.generate(analysis_id, actor, regenerate=regenerate)
+        return service.generate(
+            analysis_id,
+            actor,
+            regenerate=regenerate,
+            use_current_baseline=use_current_baseline,
+        )
     except Exception as error:
         raise_api_error(error)
 

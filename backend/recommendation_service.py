@@ -330,6 +330,7 @@ class RecommendationService:
         *,
         regenerate: bool = False,
         baseline_override: Mapping[str, Any] | None = None,
+        use_current_baseline: bool = False,
     ) -> dict[str, Any]:
         analysis = self.repository.get_analysis(analysis_id)
         if not analysis:
@@ -342,7 +343,10 @@ class RecommendationService:
 
         assessment = self.repository.get_recording_assessment(analysis_id)
         baseline = None
-        allow_current = baseline_override is not None
+        # use_current_baseline: the caller (the Updating Result page for the
+        # member's newest recording) asks for the member's current baseline to
+        # be treated as applicable even if it was set after the analysis.
+        allow_current = baseline_override is not None or use_current_baseline
         if analysis.get("user_id"):
             baseline = baseline_override or self.repository.get_member_baseline(str(analysis["user_id"]))
             if not is_baseline_applicable(
