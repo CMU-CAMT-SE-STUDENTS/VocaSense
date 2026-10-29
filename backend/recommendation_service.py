@@ -606,7 +606,26 @@ class SupabaseRestRepository:
             },
             headers=self._headers(),
         )
-        return [dict(row) for row in rows] if isinstance(rows, list) else []
+        analyses = [dict(row) for row in rows] if isinstance(rows, list) else []
+        if not analyses:
+            return analyses
+        # Attach each analysis' stored recommendation so history and export can
+        # show what the backend generated instead of recomputing it client-side.
+        ids = ",".join(str(row["id"]) for row in analyses)
+        saved = self._request(
+            "GET",
+            "/rest/v1/recommendation",
+            params={"analysis_id": f"in.({ids})", "select": "analysis_id,recommendations"},
+            headers=self._headers(),
+        )
+        by_analysis = {
+            row.get("analysis_id"): (row.get("recommendations") or {}).get("recommendations", [])
+            for row in saved
+            if isinstance(row, dict)
+        } if isinstance(saved, list) else {}
+        for row in analyses:
+            row["recommendation_items"] = by_analysis.get(row["id"])
+        return analyses
 
 
     def get_member_baseline(self, user_id: str) -> Mapping[str, Any] | None:
