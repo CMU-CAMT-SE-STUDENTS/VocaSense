@@ -125,7 +125,7 @@ async function requestUpdatedRecommendations() {
   let response
   try {
     response = await fetch(
-      `${apiBaseUrl}/api/analyses/${analysisId}/recommendations/generate?regenerate=true`,
+      `${apiBaseUrl}/api/analyses/${analysisId}/recommendations/generate?regenerate=true&use_current_baseline=true`,
       { method: 'POST', headers }
     )
   } catch {
@@ -135,6 +135,9 @@ async function requestUpdatedRecommendations() {
   if (!response.ok || !Array.isArray(payload?.recommendations)) {
     throw new Error(payload?.detail || 'Could not update recommendations. Please try again.')
   }
+  // TEMP DEBUG: remove once the recommendation output is verified.
+  console.log('[recommendation:generate] response', JSON.parse(JSON.stringify(payload)))
+  console.table((payload.recommendations || []).map((r) => ({ rule_id: r.rule_id, category: r.category, priority: r.priority, action: r.action })))
   try {
     sessionStorage.setItem(UPDATED_REC_KEY, JSON.stringify({ analysisId: String(analysisId), recommendations: payload.recommendations }))
   } catch { /* storage unavailable: ResultView falls back to local tips */ }
