@@ -103,6 +103,7 @@
               <p class="card-subtitle">Follow these tips to improve your vocal health</p>
             </div>
           </div>
+          <p v-if="!recommendations.length" class="card-subtitle">Recommendations are not available right now.</p>
           <div class="rec-list">
             <div v-for="rec in recommendations" :key="rec.text" class="rec-item" :class="'priority-bg-' + rec.priority">
               <span class="rec-icon" :class="'priority-icon-' + rec.priority">
@@ -162,7 +163,7 @@ import { ref, computed, nextTick, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import { syncAccountScope } from '@/utils/accountScope'
-import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, buildRecommendations } from '@/utils/voiceInsights'
+import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, backendRecommendationItems } from '@/utils/voiceInsights'
 import ExportMenu from '@/components/ExportMenu.vue'
 import ExportReport from '@/components/ExportReport.vue'
 import { exportReport } from '@/utils/exportReport'
@@ -333,8 +334,22 @@ const voiceBaseline = computed(() => {
 // answers and the member's baseline — those can surface tips the acoustic
 // analysis alone wouldn't catch, e.g. a healthy-sounding recording where the
 // user reported severe symptoms.
+// Recommendations come from the backend: the one regenerated after UC-17
+// ("See my updated result"), otherwise the one returned with the analysis.
+function updatedBackendRecommendations() {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem('vocasense:updatedRecommendation') || 'null')
+    const currentId = sessionStorage.getItem('vocasense:lastAnalysisId')
+    if (stored && currentId && stored.analysisId === currentId) {
+      return backendRecommendationItems(stored.recommendations)
+    }
+  } catch { /* fall through */ }
+  return null
+}
 const recommendations = computed(() =>
-  buildRecommendations(quality.value, selfAssessment.value, voiceBaseline.value)
+  updatedBackendRecommendations() ||
+  backendRecommendationItems(result.value?.recommendation?.recommendations) ||
+  []
 )
 
 // ── Export (PDF / PNG) ───────────────────────────────────────────────
