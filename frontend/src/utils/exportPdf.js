@@ -537,7 +537,11 @@ async function render(report) {
     pdf.setPage(p)
     const { rep } = pages[p - 1]
     const versions = versionsOf(rep)
-    const versionText = versions.length ? ` · scoring v${versions.join(', v')}` : ''
+    // Scoring versions are stored as values such as "v1". Keep the footer
+    // readable whether an older record supplied the prefix or not.
+    const versionText = versions.length
+      ? ` · scoring ${versions.map((version) => String(version).startsWith('v') ? version : `v${version}`).join(', ')}`
+      : ''
     // Above the rule: document notes (disclaimer, then export date). Below: running footer.
     d.font('normal', 6.5, '#a3acbf')
     pdf.text(pdf.splitTextToSize(`Medical disclaimer: ${DISCLAIMER}`, CONTENT_W), MARGIN, FOOTER_Y - 16.5)
