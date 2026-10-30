@@ -113,6 +113,10 @@ class GeminiRecommendationWorder:
                 response_schema=GEMINI_RESPONSE_SCHEMA,
                 temperature=0.1,
                 max_output_tokens=GEMINI_MAX_OUTPUT_TOKENS,
+                # No tools are used; disabling AFC also silences the SDK warning.
+                automatic_function_calling=self._types.AutomaticFunctionCallingConfig(
+                    disable=True,
+                ),
             ),
         )
         if not response.text:

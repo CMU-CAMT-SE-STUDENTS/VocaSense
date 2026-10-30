@@ -175,6 +175,19 @@ class RecommendationServiceTests(unittest.TestCase):
         self.repo.baselines["user-1"] = late
         self.assertEqual(self.service.generate(1, self.member)["context_type"], "analysis_only")
 
+    def test_use_current_baseline_keeps_a_baseline_set_after_the_analysis(self):
+        late = baseline()
+        late["created_at"] = "2099-01-01T00:00:00+00:00"
+        late["updated_at"] = "2099-01-01T00:00:00+00:00"
+        self.repo.baselines["user-1"] = late
+        self.repo.assessments[1] = assessment(1)
+        without = self.service.generate(1, self.member, regenerate=True)
+        self.assertEqual(without["context_type"], "analysis_assessment")
+        with_flag = self.service.generate(
+            1, self.member, regenerate=True, use_current_baseline=True
+        )
+        self.assertEqual(with_flag["context_type"], "analysis_baseline_assessment")
+
     def test_saved_historical_recommendation_is_not_regenerated(self):
         first = self.service.generate(1, self.member)
         self.repo.baselines["user-1"] = baseline(revision=9, updated_at="2026-09-11T00:00:00+00:00")

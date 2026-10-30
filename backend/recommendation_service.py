@@ -5,15 +5,17 @@ idempotent persistence.  The recommendation engine remains database-agnostic.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
+import socket
+import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.parse import urlencode, urlsplit
 
 from recommendation_engine import build_recommendation
 
@@ -330,6 +332,7 @@ class RecommendationService:
         *,
         regenerate: bool = False,
         baseline_override: Mapping[str, Any] | None = None,
+        use_current_baseline: bool = False,
     ) -> dict[str, Any]:
         analysis = self.repository.get_analysis(analysis_id)
         if not analysis:
@@ -342,7 +345,10 @@ class RecommendationService:
 
         assessment = self.repository.get_recording_assessment(analysis_id)
         baseline = None
-        allow_current = baseline_override is not None
+        # use_current_baseline: the caller (the Updating Result page for the
+        # member's newest recording) asks for the member's current baseline to
+        # be treated as applicable even if it was set after the analysis.
+        allow_current = baseline_override is not None or use_current_baseline
         if analysis.get("user_id"):
             baseline = baseline_override or self.repository.get_member_baseline(str(analysis["user_id"]))
             if not is_baseline_applicable(
@@ -472,10 +478,53 @@ class RecommendationService:
 class SupabaseRestRepository:
     """Minimal PostgREST adapter. The server-side Supabase key remains private."""
 
+    # A pooled connection is reused only while it has been idle for less than
+    # this long. Servers close idle keep-alive connections after a while; a
+    # fresh connection is cheaper than risking a stale one, and it means a
+    # write request never has to be replayed.
+    CONNECTION_MAX_IDLE_SECONDS = 5.0
+
     def __init__(self, url: str, service_role_key: str, timeout: float = 15.0) -> None:
         self.url = url.rstrip("/")
         self.key = service_role_key
         self.timeout = timeout
+        parts = urlsplit(self.url)
+        self._scheme = parts.scheme or "https"
+        self._netloc = parts.netloc
+        self._base_path = parts.path.rstrip("/")
+        # One connection per thread: http.client connections are not
+        # thread-safe and FastAPI runs sync routes on a thread pool.
+        self._local = threading.local()
+
+    def _new_connection(self) -> http.client.HTTPConnection:
+        factory = (
+            http.client.HTTPSConnection
+            if self._scheme == "https"
+            else http.client.HTTPConnection
+        )
+        return factory(self._netloc, timeout=self.timeout)
+
+    def _close_connection(self) -> None:
+        connection = getattr(self._local, "connection", None)
+        self._local.connection = None
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    def _acquire_connection(self) -> tuple[http.client.HTTPConnection, bool]:
+        """Return (connection, reused). Reuse only a recently used connection."""
+        connection = getattr(self._local, "connection", None)
+        last_used = getattr(self._local, "last_used", 0.0)
+        if connection is not None and (
+            time.monotonic() - last_used <= self.CONNECTION_MAX_IDLE_SECONDS
+        ):
+            return connection, True
+        self._close_connection()
+        connection = self._new_connection()
+        self._local.connection = connection
+        return connection, False
 
     @classmethod
     def from_environment(cls) -> "SupabaseRestRepository":
@@ -503,29 +552,46 @@ class SupabaseRestRepository:
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         params = kwargs.pop("params", None)
-        url = f"{self.url}{path}"
+        target = f"{self._base_path}{path}"
         if params:
-            url = f"{url}?{urlencode(params)}"
+            target = f"{target}?{urlencode(params)}"
         payload = kwargs.pop("json", None)
         body = None if payload is None else json.dumps(payload).encode("utf-8")
-        request = Request(
-            url,
-            data=body,
-            headers=kwargs.pop("headers", {}),
-            method=method,
-        )
-        try:
-            with urlopen(request, timeout=self.timeout) as response:
+        headers = dict(kwargs.pop("headers", {}))
+
+        # Only an idempotent GET on a reused connection is retried (once, on a
+        # fresh connection) if the server had already dropped that connection.
+        # Writes are never replayed.
+        attempts = 2 if method.upper() == "GET" else 1
+        status = 0
+        content = b""
+        for attempt in range(attempts):
+            connection, reused = self._acquire_connection()
+            try:
+                connection.request(method, target, body=body, headers=headers)
+                response = connection.getresponse()
                 content = response.read()
-        except HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")
+                status = response.status
+                if response.will_close:
+                    self._close_connection()
+                else:
+                    self._local.last_used = time.monotonic()
+                break
+            except (OSError, http.client.HTTPException) as error:
+                self._close_connection()
+                if reused and attempt + 1 < attempts and not isinstance(
+                    error, socket.timeout
+                ):
+                    continue
+                reason = getattr(error, "reason", None) or error
+                raise RecommendationServiceError(
+                    f"Supabase request could not be completed: {reason}"
+                ) from error
+        if status >= 400:
+            detail = content.decode("utf-8", errors="replace")
             raise RecommendationServiceError(
-                f"Supabase request failed ({error.code}): {detail[:500]}"
-            ) from error
-        except URLError as error:
-            raise RecommendationServiceError(
-                f"Supabase request could not be completed: {error.reason}"
-            ) from error
+                f"Supabase request failed ({status}): {detail[:500]}"
+            )
         if not content:
             return None
         return json.loads(content.decode("utf-8"))
@@ -606,7 +672,26 @@ class SupabaseRestRepository:
             },
             headers=self._headers(),
         )
-        return [dict(row) for row in rows] if isinstance(rows, list) else []
+        analyses = [dict(row) for row in rows] if isinstance(rows, list) else []
+        if not analyses:
+            return analyses
+        # Attach each analysis' stored recommendation so history and export can
+        # show what the backend generated instead of recomputing it client-side.
+        ids = ",".join(str(row["id"]) for row in analyses)
+        saved = self._request(
+            "GET",
+            "/rest/v1/recommendation",
+            params={"analysis_id": f"in.({ids})", "select": "analysis_id,recommendations"},
+            headers=self._headers(),
+        )
+        by_analysis = {
+            row.get("analysis_id"): (row.get("recommendations") or {}).get("recommendations", [])
+            for row in saved
+            if isinstance(row, dict)
+        } if isinstance(saved, list) else {}
+        for row in analyses:
+            row["recommendation_items"] = by_analysis.get(row["id"])
+        return analyses
 
 
     def get_member_baseline(self, user_id: str) -> Mapping[str, Any] | None:
