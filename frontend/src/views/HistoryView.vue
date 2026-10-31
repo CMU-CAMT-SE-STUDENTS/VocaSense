@@ -372,7 +372,7 @@ import { backendApi } from '@/utils/backendApi'
 import { OVERALL_META, buildMetrics, buildRecommendations, qualityFromAnalysisRow } from '@/utils/voiceInsights'
 import ExportMenu from '@/components/ExportMenu.vue'
 import ExportReport from '@/components/ExportReport.vue'
-import { exportReport } from '@/utils/exportReport'
+import { exportReport, dayStamp } from '@/utils/exportReport'
 import { buildReport } from '@/utils/exportModel'
 import CheckMarkIcon from '@/assets/icons/check_mark.png'
 import SparklesIcon from '@/assets/icons/Sparkles_1.png'
@@ -999,9 +999,11 @@ async function handleExport(format) {
     )
     exportReportModel.value = report
     await nextTick() // let <ExportReport> render the pages the PNG export captures
-    const name = selected.length === 1
-      ? `vocasense-record-${selected[0].date.toISOString().slice(0, 10)}`
-      : `vocasense-records-${selected.length}`
+    // File name by date: one record -> its day; several -> the first and last day.
+    const days = selected.map((r) => dayStamp(r.date)).sort()
+    const name = days[0] === days[days.length - 1]
+      ? `vocasense-record-${days[0]}`
+      : `vocasense-records-${days[0]}_to_${days[days.length - 1]}`
     await exportReport(exportReportEl.value.$el, { format, filename: name, report })
   } catch (err) {
     console.error('Export failed', err)

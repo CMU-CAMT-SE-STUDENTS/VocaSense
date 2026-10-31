@@ -86,11 +86,11 @@
               <i :class="'band-swatch-' + b.level"></i>{{ b.label }}
             </span>
           </div>
+          <div class="rp-chart-wrap">
           <svg class="rp-chart" :viewBox="`0 0 ${CW} ${CH}`" xmlns="http://www.w3.org/2000/svg">
             <rect v-for="b in r.chart.bands" :key="b.level" :x="PL" :width="CW - PL - PR" :y="yPos(b.to / 100)" :height="yPos(b.from / 100) - yPos(b.to / 100)" :class="'band-fill-' + b.level" />
             <g v-for="t in r.chart.yTicks" :key="t">
               <line :x1="PL" :x2="CW - PR" :y1="yPos(t / 100)" :y2="yPos(t / 100)" stroke="#e6eaf2" stroke-width="1" />
-              <text :x="PL - 8" :y="yPos(t / 100) + 4" text-anchor="end" class="rp-axis">{{ t }}</text>
             </g>
             <g stroke="#6b7690" stroke-width="1.3" fill="none" stroke-linecap="butt">
               <line :x1="PL" :y1="yPos(0)" :x2="PL" :y2="PT - 8" />
@@ -100,13 +100,17 @@
             </g>
             <polygon :points="`${PL - 4},${PT - 8} ${PL + 4},${PT - 8} ${PL},${PT - 17}`" fill="#6b7690" />
             <polygon :points="`${CW - PR + 10},${yPos(0) - 4} ${CW - PR + 10},${yPos(0) + 4} ${CW - PR + 19},${yPos(0)}`" fill="#6b7690" />
-            <text :x="PL + 10" :y="PT - 9" class="rp-axis-title">Score (0–100)</text>
-            <text :x="PL + (CW - PL - PR) / 2" :y="CH - 3" text-anchor="middle" class="rp-axis-title">{{ r.chart.xTitle || 'Date (dd/mm)' }}</text>
-            <text v-for="t in r.chart.xTicks" :key="t.label + t.x" :x="xPos(t.x)" :y="yPos(0) + 19" text-anchor="middle" class="rp-axis">{{ t.label }}</text>
-            <text v-for="t in r.chart.xTicks.filter((t) => t.sub)" :key="'sub' + t.label + t.x" :x="xPos(t.x)" :y="yPos(0) + 32" text-anchor="middle" class="rp-axis">{{ t.sub }}</text>
             <polyline v-if="r.chart.points.length > 1" :points="r.chart.points.map((p) => `${xPos(p.x)},${yPos(p.y)}`).join(' ')" fill="none" :stroke="r.chart.color" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />
             <circle v-for="(p, k) in r.chart.points" :key="k" :cx="xPos(p.x)" :cy="yPos(p.y)" r="4" :class="'dot-' + p.level" stroke="#fff" stroke-width="1.2" />
           </svg>
+          <!-- Chart labels are HTML (not SVG <text>): html2canvas draws inline SVG as an
+               image, where the page's Poppins web font is not available. -->
+          <span v-for="t in r.chart.yTicks" :key="'yl' + t" class="rp-axis rp-lbl rp-lbl-end" :style="pos(PL - 8, yPos(t / 100) + 4)">{{ t }}</span>
+          <span class="rp-axis-title rp-lbl" :style="pos(PL + 10, PT - 9)">Score (0–100)</span>
+          <span class="rp-axis-title rp-lbl rp-lbl-mid" :style="pos(PL + (CW - PL - PR) / 2, CH - 3)">{{ r.chart.xTitle || 'Date (dd/mm)' }}</span>
+          <span v-for="t in r.chart.xTicks" :key="'xl' + t.label + t.x" class="rp-axis rp-lbl rp-lbl-mid" :style="pos(xPos(t.x), yPos(0) + 19)">{{ t.label }}</span>
+          <span v-for="t in r.chart.xTicks.filter((t) => t.sub)" :key="'xs' + t.label + t.x" class="rp-axis rp-lbl rp-lbl-mid" :style="pos(xPos(t.x), yPos(0) + 32)">{{ t.sub }}</span>
+        </div>
 
           <div class="rp-stats">
             <div class="rp-stat">
@@ -219,6 +223,8 @@ const PT = 30
 const PB = 50
 const xPos = (x) => PL + x * (CW - PL - PR)
 const yPos = (y) => PT + (1 - y) * (CH - PT - PB)
+// Position an HTML label at SVG coordinates (x, y = text baseline), in %.
+const pos = (x, y) => ({ left: `${(x / CW) * 100}%`, top: `${(y / CH) * 100}%` })
 </script>
 
 <style scoped>
@@ -298,9 +304,14 @@ const yPos = (y) => PT + (1 - y) * (CH - PT - PB)
 .rp-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 18px; font-size: 11px; color: #4a5470; }
 .rp-legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .rp-legend-item i { width: 12px; height: 9px; border-radius: 2px; display: inline-block; }
+.rp-chart-wrap { position: relative; }
 .rp-chart { width: 100%; height: auto; display: block; }
-.rp-axis-title { font-size: 11px; font-weight: 600; fill: #4a5470; font-family: 'Poppins', sans-serif; }
-.rp-axis { font-size: 10.5px; fill: #6b7690; font-family: 'Poppins', sans-serif; }
+/* top = text baseline; the label box is shifted up by one line so it sits on it */
+.rp-lbl { position: absolute; line-height: 1; white-space: nowrap; transform: translateY(-85%); }
+.rp-lbl-end { transform: translate(-100%, -85%); }
+.rp-lbl-mid { transform: translate(-50%, -85%); }
+.rp-axis-title { font-size: 11px; font-weight: 600; color: #4a5470; font-family: 'Poppins', sans-serif; }
+.rp-axis { font-size: 10.5px; color: #6b7690; font-family: 'Poppins', sans-serif; }
 
 .rp-chart-title { margin: 0; text-align: center; font-size: 12.5px; font-weight: 600; color: #4a5470; }
 .band-swatch-low { background: #dff4e8; border: 1px solid #1f9d5b; }

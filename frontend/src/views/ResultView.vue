@@ -165,7 +165,7 @@ import { syncAccountScope } from '@/utils/accountScope'
 import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, buildRecommendations } from '@/utils/voiceInsights'
 import ExportMenu from '@/components/ExportMenu.vue'
 import ExportReport from '@/components/ExportReport.vue'
-import { exportReport } from '@/utils/exportReport'
+import { exportReport, dayStamp } from '@/utils/exportReport'
 import { buildReport } from '@/utils/exportModel'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
 import AudioIcon from '@/assets/icons/audio.png'
@@ -375,7 +375,7 @@ async function handleExport(format) {
     )
     exportReportModel.value = report
     await nextTick() // let <ExportReport> render the page the PNG export captures
-    const stamp = new Date().toISOString().slice(0, 10)
+    const stamp = dayStamp()
     await exportReport(exportRoot.value, { format, filename: `vocasense-result-${stamp}`, report })
   } catch (err) {
     console.error('Export failed', err)

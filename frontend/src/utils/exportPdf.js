@@ -13,7 +13,7 @@ const PAGE_H = 297
 const MARGIN = 15
 const CONTENT_W = PAGE_W - MARGIN * 2
 const FOOTER_Y = PAGE_H - 12
-const BOTTOM_LIMIT = FOOTER_Y - 26 // keeps content clear of the footer disclaimer
+const BOTTOM_LIMIT = FOOTER_Y - 22 // disclaimer text starts ~FOOTER_Y - 20
 const CONTENT_TOP = 46 // first y below the header
 
 const BLUE = '#6594e4'
@@ -183,7 +183,7 @@ function drawSingle(pdf, d, report, newPage) {
     d.font('semibold', 9.5, INK)
     const lines = pdf.splitTextToSize(r.text, textW)
     const h = Math.max(11, lines.length * 4.6 + 6)
-    if (y + h > BOTTOM_LIMIT) y = newPage()
+    // A single-session report always stays on one page (same as the PNG), so no page break here.
     d.box(MARGIN, y, CONTENT_W, h, p.bg, 3)
     pdf.setFillColor(p.dot)
     pdf.circle(MARGIN + 6, y + h / 2, 1.4, 'F')
@@ -215,8 +215,7 @@ function drawSingle(pdf, d, report, newPage) {
   const factsH = factBlocks.reduce((s, g) => s + 7 + g.rows.reduce((t, l) => t + l.length * 3.9 + 0.8, 0) + 4, 0)
   const rowH = 7
   const tableH = hasTable ? rowH * (report.acoustic.length + 1) : 0
-  const blockH = 12 + Math.max(tableH, factsH)
-  if (y + blockH > BOTTOM_LIMIT) y = newPage()
+  const blockH = 12 + Math.max(tableH, factsH - 4)
 
   pdf.setDrawColor('#c9d6ee')
   pdf.setLineWidth(0.3)
