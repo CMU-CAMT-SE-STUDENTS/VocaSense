@@ -10,7 +10,7 @@
 //               detail page per selected record
 
 export const DISCLAIMER =
-  'This platform provides preliminary voice health insights and does not replace professional medical diagnosis. Please consult a healthcare professional for medical concerns.'
+  'This platform provides preliminary voice health insights and does not replace professional medical diagnosis. It does not yet support people whose voice has been hoarse since birth. Please consult a healthcare professional for medical concerns.'
 
 export const COMPARISON_ROWS_PER_PAGE = 22
 

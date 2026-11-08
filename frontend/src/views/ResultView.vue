@@ -34,7 +34,7 @@
 
       <div class="disclaimer-banner">
         <svg viewBox="0 0 24 24" fill="none" class="disclaimer-icon"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 11v5m0-8h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <p><strong>Medical Disclaimer:</strong> This platform provides preliminary voice health insights and does not replace professional medical diagnosis. Please consult a healthcare professional for medical concerns.</p>
+        <p><strong>Medical Disclaimer:</strong> This platform provides preliminary voice health insights and does not replace professional medical diagnosis. It does not yet support people whose voice has been hoarse since birth. Please consult a healthcare professional for medical concerns.</p>
       </div>
 
       <section class="status-card">
