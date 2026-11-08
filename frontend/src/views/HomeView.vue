@@ -170,18 +170,13 @@
             <a href="#features" class="footer-link" @click.prevent="scrollTo('features')">Features</a>
             <a href="#how-it-works" class="footer-link" @click.prevent="scrollTo('how-it-works')">How it Works</a>
           </div>
-          <div class="footer-col">
-            <h5 class="footer-col-title">Company</h5>
-            <a href="#" class="footer-link">About</a>
-            <a href="#" class="footer-link">Contact</a>
-          </div>
         </div>
       </div>
       <div class="footer-bottom">
         <span>© 2026 VocaSense. All rights reserved.</span>
         <span>
           This platform provides preliminary voice health insights and does not replace professional
-          medical diagnosis.
+          medical diagnosis. It does not yet support people whose voice has been hoarse since birth.
         </span>
       </div>
     </footer>
@@ -932,6 +927,41 @@ const scrollTo = (id) => {
 
   .features-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  /* Narrow phones (under ~400px): keep the title on two lines and the
+     "Try Voice Test Now!" button on one line. The sizes shrink smoothly with the
+     screen width, so there is no jump between 393px and 400px. */
+  .hero-title {
+    font-size: clamp(22px, 6.4vw, 28px);
+    letter-spacing: 0.3px;
+  }
+
+  .btn-cta {
+    gap: 8px;
+    padding: clamp(13px, 4vw, 20px) clamp(20px, 8vw, 50px);
+    font-size: clamp(15px, 4.6vw, 1.2rem);
+    white-space: nowrap;
+    max-width: 100%;
+  }
+
+  .btn-cta-mic {
+    width: 20px;
+    height: 20px;
+  }
+
+  .btn-cta-arrow {
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 360px) {
+  .hero-badge {
+    font-size: 12px;
+    padding: 6px 12px;
+    white-space: nowrap;
   }
 }
 </style>
