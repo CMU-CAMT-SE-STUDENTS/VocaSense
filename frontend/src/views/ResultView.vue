@@ -375,7 +375,9 @@ async function handleExport(format) {
     )
     exportReportModel.value = report
     await nextTick() // let <ExportReport> render the page the PNG export captures
-    const stamp = dayStamp()
+    // File name uses the day of the recording (local time), the same date the
+    // report shows, so it matches History and does not change if exported later.
+    const stamp = dayStamp(iso ? new Date(iso) : new Date())
     await exportReport(exportRoot.value, { format, filename: `vocasense-result-${stamp}`, report })
   } catch (err) {
     console.error('Export failed', err)
