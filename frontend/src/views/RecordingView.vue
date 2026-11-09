@@ -377,7 +377,7 @@ const AUDIO_CONSTRAINTS = {
     sampleRate: { ideal: 44100 },
   },
 }
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 const NOISE_LOUD_THRESHOLD = 20
 
 const ERROR_MESSAGES = {

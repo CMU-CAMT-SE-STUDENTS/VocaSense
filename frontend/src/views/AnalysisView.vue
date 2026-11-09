@@ -62,7 +62,7 @@ import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 const goBack = () => router.push('/')
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 const GUEST_SESSION_KEY = 'vocasense:guestAnalysisSession'
 const RETRYABLE_STATUS_CODES = new Set([502, 503, 504])
 const BACKEND_RETRY_DELAYS_MS = [3000, 5000, 10000, 15000, 20000]
