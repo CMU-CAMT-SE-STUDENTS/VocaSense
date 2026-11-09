@@ -163,13 +163,13 @@ function drawSingle(pdf, d, report, newPage) {
   report.metrics.forEach((m, i) => {
     const c = RISK[m.level] || RISK.moderate
     const x = MARGIN + i * (cardW + gap)
-    d.box(x, y, cardW, 22, c.cardBg, 4, '#e5e7eb')
+    d.box(x, y, cardW, 20.5, c.cardBg, 4, '#e5e7eb')
     d.font('normal', 8, '#5b6680')
     pdf.text(m.scoreText ? `${m.label}: ${m.scoreText}` : m.label, x + 5, y + 8)
     d.font('bold', 12.5, c.text)
-    pdf.text(m.value, x + 5, y + 16.5)
+    pdf.text(m.value, x + 5, y + 15.2)
   })
-  y += 22 + 9
+  y += 20.5 + 9
 
   // Recommendations
   if (report.recommendations.length) {
@@ -180,18 +180,18 @@ function drawSingle(pdf, d, report, newPage) {
   const textW = CONTENT_W - 12 - 36
   for (const r of report.recommendations) {
     const p = PRIORITY[r.priority] || PRIORITY.moderate
-    d.font('semibold', 9.5, INK)
+    d.font('semibold', 9, INK)
     const lines = pdf.splitTextToSize(r.text, textW)
-    const h = Math.max(11, lines.length * 4.6 + 6)
+    const h = Math.max(10, lines.length * 4.4 + 5)
     // A single-session report always stays on one page (same as the PNG), so no page break here.
     d.box(MARGIN, y, CONTENT_W, h, p.bg, 3)
     pdf.setFillColor(p.dot)
     pdf.circle(MARGIN + 6, y + h / 2, 1.4, 'F')
-    d.font('semibold', 9.5, INK)
-    pdf.text(lines, MARGIN + 11, y + h / 2 - ((lines.length - 1) * 4.6) / 2 + 1.2)
+    d.font('semibold', 9, INK)
+    pdf.text(lines, MARGIN + 11, y + h / 2 - ((lines.length - 1) * 4.4) / 2 + 1.2)
     d.font('semibold', 8, p.text)
     pdf.text(p.label, PAGE_W - MARGIN - 5, y + h / 2 + 1, { align: 'right' })
-    y += h + 2.5
+    y += h + 2.2
   }
   y += 3
 
@@ -217,6 +217,10 @@ function drawSingle(pdf, d, report, newPage) {
   const tableH = hasTable ? rowH * (report.acoustic.length + 1) : 0
   const blockH = 12 + Math.max(tableH, factsH - 4)
 
+  // The context block has to end above the footer notes. If it does not fit on this page, it moves
+  // to a new page (with the same header) instead of running over the disclaimer.
+  if (y + blockH > BOTTOM_LIMIT) y = newPage() + 4
+
   pdf.setDrawColor('#c9d6ee')
   pdf.setLineWidth(0.3)
   pdf.line(MARGIN, y, PAGE_W - MARGIN, y)
@@ -232,7 +236,7 @@ function drawSingle(pdf, d, report, newPage) {
     heads.forEach((h, i) => {
       d.rect(x, y, cols[i], rowH, '#f4f7ff', '#1a1a2e')
       d.font('bold', 7.5, INK)
-      pdf.text(h, x + 2, y + 4.7)
+      pdf.text(h, x + 2, y + rowH / 2 + 1.2)
       x += cols[i]
     })
     let ry = y + rowH
@@ -246,7 +250,7 @@ function drawSingle(pdf, d, report, newPage) {
         const flagged = i === 2 && row.abnormal
         const color = flagged ? (RISK[row.level] || RISK.moderate).text : i === 1 ? '#5b6680' : INK
         d.font(flagged ? 'bold' : i === 1 ? 'semibold' : 'normal', 7.5, color)
-        pdf.text(c, x + 2, ry + 4.7)
+        pdf.text(c, x + 2, ry + rowH / 2 + 1.2)
         x += cols[i]
       })
       ry += rowH
@@ -391,7 +395,7 @@ function drawSummary(pdf, d, report) {
     ['Average score', report.summary.average.score, report.summary.average.level, `across ${report.sessionCount} sessions`],
     ['Highest score', report.summary.highest.score, report.summary.highest.level, report.summary.highest.date],
     ['Lowest score', report.summary.lowest.score, report.summary.lowest.level, report.summary.lowest.date],
-    ['Change since first', report.summary.trend.text, report.summary.trend.abnormal ? 'high' : null, report.summary.trend.sub]
+    ['Change since first', report.summary.trend.text, report.summary.trend.level, report.summary.trend.sub]
   ].forEach(([label, value, level, sub], i) => {
     const x = MARGIN + i * (sw + sgap)
     d.box(x, y, sw, 24, '#ffffff', 3.5, '#dde4f2')
@@ -402,7 +406,7 @@ function drawSummary(pdf, d, report) {
     d.font('normal', 7.5, '#8b96ad')
     pdf.text(sub || '', x + 5, y + 20.5)
   })
-  y += 24 + 6
+  y += 24 + 8.1
 
   // Risk counts as chips, with a caption saying what is being counted
   d.font('semibold', 8, '#6b7690')
@@ -420,27 +424,44 @@ function drawSummary(pdf, d, report) {
     pdf.text(text, cx + 4, y + 4.4)
     cx += w + 3
   })
-  y += 14
+  y += 19.1 // chips -> Baseline Context: same spacing as the PNG report
 
   // Baseline context
   if (report.baseline.rows.length) {
     d.font('bold', 13, INK)
     pdf.text('Baseline Context', MARGIN, y)
-    y += 5
+    y += 6.9
     d.font('normal', 7.5, '#8b96ad')
     pdf.text(`Profile as retrieved on ${report.baseline.retrievedAt} — may differ from when older sessions were recorded.`, MARGIN, y)
-    y += 6
-    report.baseline.rows.forEach((r, i) => {
-      const x = colX[i % 2]
-      const ry = y + Math.floor(i / 2) * 5.4
-      const label = `${r.label}: `
-      d.font('bold', 8.5, INK)
-      pdf.text(label, x, ry)
-      const lw = pdf.getTextWidth(label)
-      d.font('normal', 8.5, INK)
-      const val = pdf.splitTextToSize(r.value, CONTENT_W / 2 - lw - 8)
-      pdf.text(val[0], x + lw, ry)
-    })
+    y += 8.5
+    // Two facts per row. A long value continues on the next line, under the label (the same wrap
+    // the PNG report has), so no text is cut off; the row grows by one line for each extra line.
+    const colW = CONTENT_W / 2 - 8
+    const ROW_H = 6.5 // row pitch and wrapped-line pitch match the PNG report
+    const LINE_H = 4.87
+    let ry = y
+    for (let i = 0; i < report.baseline.rows.length; i += 2) {
+      let lines = 1
+      ;[report.baseline.rows[i], report.baseline.rows[i + 1]].forEach((r, k) => {
+        if (!r) return
+        const x = colX[k]
+        const label = `${r.label}: `
+        d.font('bold', 8.5, INK)
+        pdf.text(label, x, ry)
+        const lw = pdf.getTextWidth(label)
+        d.font('normal', 8.5, INK)
+        const value = String(r.value)
+        const first = pdf.splitTextToSize(value, colW - lw)[0] || ''
+        pdf.text(first, x + lw, ry)
+        const rest = value.startsWith(first) ? value.slice(first.length).trim() : ''
+        if (rest) {
+          const more = pdf.splitTextToSize(rest, colW)
+          more.forEach((line, j) => pdf.text(line, x, ry + LINE_H * (j + 1)))
+          lines = Math.max(lines, 1 + more.length)
+        }
+      })
+      ry += ROW_H + LINE_H * (lines - 1)
+    }
   }
 }
 
@@ -542,8 +563,17 @@ async function render(report) {
       ? ` · scoring ${versions.map((version) => String(version).startsWith('v') ? version : `v${version}`).join(', ')}`
       : ''
     // Above the rule: document notes (disclaimer, then export date). Below: running footer.
+    // "Medical disclaimer:" is bold (as in the PNG report); the text follows it on the same line.
+    const discY = FOOTER_Y - 16.5
+    d.font('bold', 6.5, '#a3acbf')
+    const discLabel = 'Medical disclaimer: '
+    pdf.text(discLabel, MARGIN, discY)
+    const discLabelW = pdf.getTextWidth(discLabel)
     d.font('normal', 6.5, '#a3acbf')
-    pdf.text(pdf.splitTextToSize(`Medical disclaimer: ${DISCLAIMER}`, CONTENT_W), MARGIN, FOOTER_Y - 16.5)
+    const discFirst = pdf.splitTextToSize(DISCLAIMER, CONTENT_W - discLabelW)[0] || ''
+    pdf.text(discFirst, MARGIN + discLabelW, discY)
+    const discRest = DISCLAIMER.startsWith(discFirst) ? DISCLAIMER.slice(discFirst.length).trim() : ''
+    if (discRest) pdf.text(pdf.splitTextToSize(discRest, CONTENT_W), MARGIN, discY + (pdf.getLineHeight() / pdf.internal.scaleFactor))
     d.font('normal', 7.5, '#a3acbf')
     pdf.text(`Report exported on ${longDate(rep.generatedAt)}, ${clockTime(rep.generatedAt)}`, MARGIN, FOOTER_Y - 6.5)
     pdf.setDrawColor('#c9d6ee')
