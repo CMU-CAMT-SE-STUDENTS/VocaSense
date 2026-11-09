@@ -27,6 +27,9 @@ async function capturePages(root) {
   // Poppins is loaded from Google Fonts; capture before it resolves and the
   // report would fall back to a default font.
   if (document.fonts?.ready) await document.fonts.ready
+  // <ExportReport> measures its record pages and splits the ones that are too tall for A4; give it a
+  // moment to re-render before the pages are collected.
+  await new Promise((r) => setTimeout(r, 150))
   // The logo is an <img> that only starts decoding once the pages render.
   await Promise.all([...root.querySelectorAll('img')].map((img) => img.decode?.().catch(() => {})))
   const pages = [...root.querySelectorAll('[data-report-page]')]
