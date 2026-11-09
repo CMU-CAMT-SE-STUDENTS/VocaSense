@@ -344,15 +344,17 @@ export function buildSummaryReport(records, ctx) {
     : { score: '–', date: '', level: null })
 
   // Direction of travel: latest scored session minus the first scored one. A drop is
-  // shown in red, like any other value that is moving the wrong way.
+  // shown in red and a rise in green.
   const trend = (() => {
-    if (scored.length < 2) return { text: '–', abnormal: false, sub: 'needs 2+ sessions' }
+    if (scored.length < 2) return { text: '–', abnormal: false, level: null, sub: 'needs 2+ sessions' }
     const first = scored[0]
     const last = scored[scored.length - 1]
     const d = Math.round((get.overall(last) - get.overall(first)) * 10) / 10
     return {
       text: `${d > 0 ? '+' : d < 0 ? '-' : ''}${Math.abs(d).toFixed(1)}`,
       abnormal: d < 0,
+      // Colour of the number: red when the score dropped, green when it rose, plain when unchanged.
+      level: d < 0 ? 'high' : d > 0 ? 'low' : null,
       sub: `${when(first.dateObj)} – ${when(last.dateObj)}`
     }
   })()

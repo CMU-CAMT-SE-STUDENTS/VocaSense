@@ -1,5 +1,5 @@
 <template>
-  <div class="export-root" aria-hidden="true">
+  <div ref="rootEl" class="export-root" aria-hidden="true">
     <!-- Off-screen print layout captured by exportReport() for PNG. Fixed
          794px width (A4 at 96dpi) so it looks the same at any viewport. Kept
          inside the root div: a comment above it makes this a multi-root
@@ -7,7 +7,7 @@
          It renders the same report model exportPdf.js draws (utils/exportModel.js). -->
 
     <template v-if="report">
-      <section v-for="(page, i) in pages" :key="i" class="report-page" data-report-page>
+      <section v-for="(page, i) in pages" :key="i" class="report-page" data-report-page :data-part="page.part" :data-fit-key="page.key" :data-splittable="page.splittable ? 'yes' : 'no'">
         <template v-for="r in [page.report]" :key="0">
         <header class="rp-header">
           <div class="rp-head-left">
@@ -20,6 +20,7 @@
 
         <!-- ───────── single session ───────── -->
         <template v-if="page.kind === 'single'">
+          <template v-if="page.part !== 'context'">
           <div class="rp-status">
             <h2 class="rp-status-title">Voice Health Status</h2>
             <p v-if="r.score !== null" class="rp-score" :class="'risk-text-' + r.scoreLevel">
@@ -45,8 +46,10 @@
             </div>
           </div>
 
-          <template v-if="r.acoustic.length || r.context.length || r.baselineFactors.length">
-            <h3 class="rp-section rp-section-center">{{ r.acoustic.length ? 'Acoustic Measurement & Assessment Context' : 'Assessment Context' }}</h3>
+          </template>
+
+          <template v-if="page.part !== 'body' && (r.acoustic.length || r.context.length || r.baselineFactors.length)">
+            <h3 class="rp-section rp-section-center" :class="{ 'rp-section-first': page.part === 'context' }">{{ r.acoustic.length ? 'Acoustic Measurement & Assessment Context' : 'Assessment Context' }}</h3>
             <div class="rp-context">
               <table v-if="r.acoustic.length" class="rp-table">
                 <thead>
@@ -86,7 +89,7 @@
               <i :class="'band-swatch-' + b.level"></i>{{ b.label }}
             </span>
           </div>
-          <div class="rp-chart-wrap">
+          <div class="rp-chart-wrap" :style="r.chart.xTicks.some((t) => t.sub) ? { marginBottom: '8px' } : null">
           <svg class="rp-chart" :viewBox="`0 0 ${CW} ${CH}`" xmlns="http://www.w3.org/2000/svg">
             <rect v-for="b in r.chart.bands" :key="b.level" :x="PL" :width="CW - PL - PR" :y="yPos(b.to / 100)" :height="yPos(b.from / 100) - yPos(b.to / 100)" :class="'band-fill-' + b.level" />
             <g v-for="t in r.chart.yTicks" :key="t">
@@ -107,7 +110,7 @@
                image, where the page's Poppins web font is not available. -->
           <span v-for="t in r.chart.yTicks" :key="'yl' + t" class="rp-axis rp-lbl rp-lbl-end" :style="pos(PL - 8, yPos(t / 100) + 4)">{{ t }}</span>
           <span class="rp-axis-title rp-lbl" :style="pos(PL + 10, PT - 9)">Score (0–100)</span>
-          <span class="rp-axis-title rp-lbl rp-lbl-mid" :style="pos(PL + (CW - PL - PR) / 2, CH - 3)">{{ r.chart.xTitle || 'Date (dd/mm)' }}</span>
+          <span class="rp-axis-title rp-lbl rp-lbl-mid" :style="pos(PL + (CW - PL - PR) / 2, CH - (r.chart.xTicks.some((t) => t.sub) ? -1 : 14))">{{ r.chart.xTitle || 'Date (dd/mm)' }}</span>
           <span v-for="t in r.chart.xTicks" :key="'xl' + t.label + t.x" class="rp-axis rp-lbl rp-lbl-mid" :style="pos(xPos(t.x), yPos(0) + 19)">{{ t.label }}</span>
           <span v-for="t in r.chart.xTicks.filter((t) => t.sub)" :key="'xs' + t.label + t.x" class="rp-axis rp-lbl rp-lbl-mid" :style="pos(xPos(t.x), yPos(0) + 32)">{{ t.sub }}</span>
         </div>
@@ -130,7 +133,7 @@
             </div>
             <div class="rp-stat">
               <span class="rp-stat-label">Change since first</span>
-              <strong class="rp-stat-value" :class="r.summary.trend.abnormal ? 'risk-text-high' : ''">{{ r.summary.trend.text }}</strong>
+              <strong class="rp-stat-value" :class="r.summary.trend.level ? 'risk-text-' + r.summary.trend.level : ''">{{ r.summary.trend.text }}</strong>
               <span class="rp-stat-sub">{{ r.summary.trend.sub }}</span>
             </div>
           </div>
@@ -142,8 +145,8 @@
           </div>
 
           <template v-if="r.baseline.rows.length">
-            <h3 class="rp-section">Baseline Context</h3>
-            <p class="rp-note">Profile as retrieved on {{ r.baseline.retrievedAt }} — may differ from when older sessions were recorded.</p>
+            <h3 class="rp-section rp-baseline-title">Baseline Context</h3>
+            <p class="rp-note rp-baseline-note">Profile as retrieved on {{ r.baseline.retrievedAt }} — may differ from when older sessions were recorded.</p>
             <div class="rp-baseline">
               <p v-for="f in r.baseline.rows" :key="f.label" class="rp-fact"><strong>{{ f.label }}:</strong> {{ f.value }}</p>
             </div>
@@ -187,7 +190,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import logoUrl from '@/assets/icons/logo.png'
 import { DISCLAIMER, longDate, clockTime } from '@/utils/exportModel'
 
@@ -198,16 +201,49 @@ const props = defineProps({
 
 // Pages are derived from the model so the PNG matches the PDF page for page.
 // `report` supplies each page's header (detail pages carry their own).
+// A record page that runs past one A4 page is split in two (the same rule the PDF follows): the
+// status, metrics and recommendations stay on the first page and the context block (acoustic table,
+// recording context, baseline factors) moves to a second page with the same header, so text never
+// overlaps the footer. `split` holds the keys of the pages that were measured as too tall.
+const A4_PX = 1123
+const rootEl = ref(null)
+const split = ref(new Set())
+const recordPages = (rep, key) => {
+  const splittable = !!(rep.acoustic.length || rep.context.length || rep.baselineFactors.length)
+  if (splittable && split.value.has(key)) {
+    return [
+      { kind: 'single', report: rep, part: 'body', key, splittable },
+      { kind: 'single', report: rep, part: 'context', key, splittable }
+    ]
+  }
+  return [{ kind: 'single', report: rep, part: 'full', key, splittable }]
+}
 const pages = computed(() => {
   const r = props.report
   if (!r) return []
-  if (r.type === 'single') return [{ kind: 'single', report: r }]
+  if (r.type === 'single') return recordPages(r, 'main')
   return [
     { kind: 'summary', report: r },
     ...r.comparisonPages.map((rows) => ({ kind: 'comparison', report: r, rows })),
-    ...r.details.map((detail) => ({ kind: 'single', report: detail }))
+    ...r.details.flatMap((detail, i) => recordPages(detail, `d${i}`))
   ]
 })
+
+// Measure the rendered record pages once the fonts are ready; any taller than A4 get split.
+async function fitPages() {
+  if (document.fonts?.ready) await document.fonts.ready
+  await nextTick()
+  const root = rootEl.value
+  if (!root) return
+  const tooTall = [...root.querySelectorAll('[data-part="full"][data-splittable="yes"]')]
+    .filter((el) => el.offsetHeight > A4_PX + 1)
+    .map((el) => el.dataset.fitKey)
+  if (tooTall.length) split.value = new Set([...split.value, ...tooTall])
+}
+watch(() => props.report, () => {
+  split.value = new Set()
+  fitPages()
+}, { flush: 'post' })
 
 function versionFor(r) {
   const v = r.type === 'single' ? (r.scoringVersion ? [r.scoringVersion] : []) : r.scoringVersions
@@ -275,17 +311,19 @@ const pos = (x, y) => ({ left: `${(x / CW) * 100}%`, top: `${(y / CH) * 100}%` }
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 1px;
 }
 .rp-metric-name { font-size: 12px; font-weight: 500; color: #5b6680; }
 .rp-metric-value { font-size: 18px; font-weight: 700; }
 
 .rp-section { margin: 6px 0 0; font-size: 16px; font-weight: 700; }
 .rp-section-center { text-align: center; font-size: 17px; margin-top: 10px; padding-top: 12px; border-top: 1px solid #c9d6ee; }
-.rp-recs { display: flex; flex-direction: column; gap: 7px; }
-.rp-rec { display: flex; align-items: center; gap: 12px; border-radius: 12px; padding: 10px 14px; }
+/* On the continuation page the heading is the first thing under the header, so no divider line above it. */
+.rp-section-first { margin-top: 0; padding-top: 0; border-top: 0; }
+.rp-recs { display: flex; flex-direction: column; gap: 6px; }
+.rp-rec { display: flex; align-items: center; gap: 12px; border-radius: 12px; padding: 8px 14px; }
 .rp-rec-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.rp-rec-text { flex: 1; font-size: 12.5px; font-weight: 600; line-height: 1.5; }
+.rp-rec-text { flex: 1; font-size: 12px; font-weight: 600; line-height: 1.5; }
 .rp-rec-prio { font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 
 .rp-context { display: grid; grid-template-columns: 1.4fr 1fr; gap: 22px; align-items: start; }
@@ -325,7 +363,7 @@ const pos = (x, y) => ({ left: `${(x / CW) * 100}%`, top: `${(y / CH) * 100}%` }
 .dot-high { fill: #c83d3d; }
 
 .rp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.rp-caption { margin: 2px 0 -8px; font-size: 11px; font-weight: 600; color: #6b7690; }
+.rp-caption { margin: 3px 0 -8px; font-size: 11px; font-weight: 600; color: #6b7690; }
 .rp-stat { border: 1px solid #dde4f2; border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; }
 .rp-stat-label { font-size: 11.5px; font-weight: 500; color: #5b6680; }
 .rp-stat-value { font-size: 26px; font-weight: 700; line-height: 1.2; }
@@ -333,7 +371,11 @@ const pos = (x, y) => ({ left: `${(x / CW) * 100}%`, top: `${(y / CH) * 100}%` }
 .rp-risk { display: flex; gap: 10px; flex-wrap: wrap; }
 .rp-risk span { padding: 4px 12px; border-radius: 14px; font-size: 11.5px; font-weight: 600; }
 .rp-note { margin: 0; font-size: 10.5px; color: #8b96ad; }
-.rp-baseline { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 24px; padding-left: 8px; }
+/* Summary page, Baseline Context block: looser spacing. exportPdf.js (drawSummary) uses the same distances. */
+.rp-baseline-title { margin-top: 14px; }
+.rp-baseline-note { margin-top: -8px; }
+.rp-baseline { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; padding-left: 8px; margin-top: -1px; }
+.rp-baseline .rp-fact { margin: 0; line-height: 1.6; }
 
 .rp-ref-row td,
 .rp-ref-cell { background: #f4f7ff; color: #5b6680; font-weight: 600; }
