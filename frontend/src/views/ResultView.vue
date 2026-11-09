@@ -34,7 +34,7 @@
 
       <div class="disclaimer-banner">
         <svg viewBox="0 0 24 24" fill="none" class="disclaimer-icon"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 11v5m0-8h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <p><strong>Medical Disclaimer:</strong> This platform provides preliminary voice health insights and does not replace professional medical diagnosis. Please consult a healthcare professional for medical concerns.</p>
+        <p><strong>Medical Disclaimer:</strong> This platform provides preliminary voice health insights and does not replace professional medical diagnosis. It does not yet support people whose voice has been hoarse since birth. Please consult a healthcare professional for medical concerns.</p>
       </div>
 
       <section class="status-card">
@@ -166,7 +166,7 @@ import { syncAccountScope } from '@/utils/accountScope'
 import { OVERALL_META, CLARITY_META, STABILITY_META, HOARSENESS_META, backendRecommendationItems } from '@/utils/voiceInsights'
 import ExportMenu from '@/components/ExportMenu.vue'
 import ExportReport from '@/components/ExportReport.vue'
-import { exportReport } from '@/utils/exportReport'
+import { exportReport, dayStamp } from '@/utils/exportReport'
 import { buildReport } from '@/utils/exportModel'
 import AudioWaveIcon from '@/assets/icons/audio_wave.png'
 import AudioIcon from '@/assets/icons/audio.png'
@@ -390,7 +390,9 @@ async function handleExport(format) {
     )
     exportReportModel.value = report
     await nextTick() // let <ExportReport> render the page the PNG export captures
-    const stamp = new Date().toISOString().slice(0, 10)
+    // File name uses the day of the recording (local time), the same date the
+    // report shows, so it matches History and does not change if exported later.
+    const stamp = dayStamp(iso ? new Date(iso) : new Date())
     await exportReport(exportRoot.value, { format, filename: `vocasense-result-${stamp}`, report })
   } catch (err) {
     console.error('Export failed', err)

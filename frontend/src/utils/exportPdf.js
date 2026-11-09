@@ -215,7 +215,6 @@ function drawSingle(pdf, d, report, newPage) {
   const factsH = factBlocks.reduce((s, g) => s + 7 + g.rows.reduce((t, l) => t + l.length * 3.9 + 0.8, 0) + 4, 0)
   const rowH = 7
   const tableH = hasTable ? rowH * (report.acoustic.length + 1) : 0
-  // factsH counts trailing gap after the last group; drop it so a block that fits stays on the page
   const blockH = 12 + Math.max(tableH, factsH - 4)
 
   pdf.setDrawColor('#c9d6ee')
@@ -537,7 +536,11 @@ async function render(report) {
     pdf.setPage(p)
     const { rep } = pages[p - 1]
     const versions = versionsOf(rep)
-    const versionText = versions.length ? ` · scoring v${versions.join(', v')}` : ''
+    // Scoring versions are stored as values such as "v1". Keep the footer
+    // readable whether an older record supplied the prefix or not.
+    const versionText = versions.length
+      ? ` · scoring ${versions.map((version) => String(version).startsWith('v') ? version : `v${version}`).join(', ')}`
+      : ''
     // Above the rule: document notes (disclaimer, then export date). Below: running footer.
     d.font('normal', 6.5, '#a3acbf')
     pdf.text(pdf.splitTextToSize(`Medical disclaimer: ${DISCLAIMER}`, CONTENT_W), MARGIN, FOOTER_Y - 16.5)

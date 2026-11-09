@@ -10,7 +10,7 @@
 //               detail page per selected record
 
 export const DISCLAIMER =
-  'This platform provides preliminary voice health insights and does not replace professional medical diagnosis. Please consult a healthcare professional for medical concerns.'
+  'This platform provides preliminary voice health insights and does not replace professional medical diagnosis. It does not yet support people whose voice has been hoarse since birth. Please consult a healthcare professional for medical concerns.'
 
 export const COMPARISON_ROWS_PER_PAGE = 22
 
@@ -300,10 +300,13 @@ export function buildSummaryReport(records, ctx) {
   const period = `${shortDate(first)} – ${shortDate(last)}`
 
   const get = {
-    overall: (r) => Number(r.score),
-    clarity: (r) => Number(r.scores?.clarity),
-    stability: (r) => Number(r.scores?.stability),
-    hoarseness: (r) => Number(r.scores?.hoarseness)
+    // Use the same safe number conversion as the single-report model. In
+    // particular, Number(null) is 0, which would incorrectly turn a missing
+    // score into a valid high-risk chart point and skew summary statistics.
+    overall: (r) => num(r.score),
+    clarity: (r) => num(r.scores?.clarity),
+    stability: (r) => num(r.scores?.stability),
+    hoarseness: (r) => num(r.scores?.hoarseness)
   }
 
   // Chart geometry in 0..1 space (y: 0 = score 0, 1 = score 100; x spread evenly

@@ -1,8 +1,15 @@
 // Exports the report as PDF (real text, built by exportPdf.js) or PNG (a
-// capture of the off-screen <ExportReport> pages). Libraries are imported on
+// capture of the off-screen <ExportReport> pages, one image per page). Libraries are imported on
 // demand so they stay out of the main bundle.
 
 const SCALE = 2
+
+// yyyy-mm-dd in the user's local time zone (toISOString would use UTC and give
+// the previous day just after local midnight). Used in export file names.
+export function dayStamp(date = new Date()) {
+  const p = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`
+}
 
 function download(blob, filename) {
   const url = URL.createObjectURL(blob)
@@ -32,37 +39,20 @@ async function capturePages(root) {
 
 const toBlob = (canvas, type) => new Promise((resolve) => canvas.toBlob(resolve, type))
 
-// Browsers cap canvas height (~32,000px in Chrome, far less on some phones), so
-// only a few pages are stacked into one tall PNG; longer reports (a summary plus
-// many detail pages) are downloaded as one PNG per page instead.
-const MAX_STACKED_PAGES = 4
-
+// Each report page is downloaded as its own PNG file (never one tall stacked
+// image): <filename>.png for one page, <filename>-page01.png, -page02.png ...
+// for several. The browser may ask once to allow multiple downloads.
 async function savePng(root, filename) {
   const canvases = await capturePages(root)
   if (canvases.length === 1) {
     download(await toBlob(canvases[0], 'image/png'), `${filename}.png`)
     return
   }
-  if (canvases.length > MAX_STACKED_PAGES) {
-    const digits = String(canvases.length).length
-    for (let i = 0; i < canvases.length; i++) {
-      download(await toBlob(canvases[i], 'image/png'), `${filename}-page${String(i + 1).padStart(digits, '0')}.png`)
-      await new Promise((r) => setTimeout(r, 250)) // let the browser accept each download
-    }
-    return
+  const digits = Math.max(2, String(canvases.length).length)
+  for (let i = 0; i < canvases.length; i++) {
+    download(await toBlob(canvases[i], 'image/png'), `${filename}-page${String(i + 1).padStart(digits, '0')}.png`)
+    await new Promise((r) => setTimeout(r, 400)) // let the browser accept each download
   }
-  const target = document.createElement('canvas')
-  target.width = Math.max(...canvases.map((c) => c.width))
-  target.height = canvases.reduce((sum, c) => sum + c.height, 0)
-  const ctx = target.getContext('2d')
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, target.width, target.height)
-  let y = 0
-  for (const c of canvases) {
-    ctx.drawImage(c, 0, y)
-    y += c.height
-  }
-  download(await toBlob(target, 'image/png'), `${filename}.png`)
 }
 
 // `report` is the model given to <ExportReport> (see buildReport in
