@@ -1,5 +1,42 @@
+# Environment files. Keep examples safe to commit; ignore actual local config.
+.env
+.env.*
+!.env.example
 backend/.env
+frontend/.env
+**/.env
+**/.env.*
+!**/.env.example
+
+# Credentials and private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.keystore
+secrets/
+
+# Python artifacts
 backend/.venv/
-backend/__pycache__/
 **/__pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node and frontend build artifacts
+node_modules/
+**/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+coverage/
+
+# Local runtime/editor artifacts
+*.log
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

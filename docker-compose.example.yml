@@ -1,0 +1,44 @@
+# Production example: copy to docker-compose.production.yml or run with
+# `docker compose -f docker-compose.example.yml up -d` from the project root.
+services:
+  backend:
+    image: ghcr.io/cmu-camt-se-students/vocasense-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL in .env}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?Set SUPABASE_SECRET_KEY in .env}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    networks:
+      - vocasense
+
+  frontend:
+    image: ghcr.io/cmu-camt-se-students/vocasense-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - vocasense
+
+networks:
+  vocasense:
+    driver: bridge
